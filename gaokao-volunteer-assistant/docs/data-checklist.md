@@ -28,3 +28,9 @@
 - `college_groups.csv`：已根据投档结果和招生计划样例生成首批院校专业组。
 - `enrollment_plans.csv`：已整理陕西国际商贸学院 2025 年在皖普通本科批招生计划样例 17 行。
 - `source_index.csv`：已登记具体来源、发布时间、获取时间、哈希、解析版本和审核状态。
+
+## 第 3 周入库状态
+
+- `npm run data:validate` 已覆盖来源追溯、业务键重复、院校专业组引用和一分一段位次区间校验。
+- `npm run data:import` 会将 cleaned CSV 写入 PostgreSQL，导入后可通过 `/api/college-groups` 查询院校专业组。
+- 本地 PostgreSQL 未启动时，可先运行 `npm run data:validate` 和 `npm run db:validate` 做离线校验，待数据库可用后再执行迁移和导入。

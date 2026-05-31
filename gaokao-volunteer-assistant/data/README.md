@@ -27,3 +27,15 @@ npm run data:check
 
 `prepare_week1_2_data.py` 会从已留存的官方 PDF、官方投档长图和招生计划样例页面生成 cleaned CSV。投档长图当前只做首批 OCR 样例抽取，完整 OCR 与人工复核需后续继续推进。
 OCR 过程会在 `tmp/ocr/` 生成缓存文件，该目录不属于可追溯原始数据。
+
+## 第 3 周入库命令
+
+```bash
+docker compose up -d postgres
+npm run db:generate
+npm run db:migrate
+npm run data:validate
+npm run data:import
+```
+
+`data:validate` 先做业务键、来源追溯和外键引用校验；`data:import` 再把 cleaned CSV 通过 Prisma 写入 PostgreSQL。详见 `docs/week3-database-import.md`。

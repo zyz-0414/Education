@@ -6,7 +6,12 @@ from pathlib import Path
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Validate Anhui score segment CSV before database import.")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Legacy CSV smoke check for Anhui score segments. "
+            "Use `npm run data:import` for the Week 3 Prisma database import."
+        )
+    )
     parser.add_argument("csv_file", type=Path)
     return parser.parse_args()
 

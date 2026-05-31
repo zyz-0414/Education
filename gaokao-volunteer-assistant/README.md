@@ -43,7 +43,9 @@ tests/                   规则和推荐测试
 ```bash
 npm install
 cp .env.example .env
+npm run db:generate
 npm run db:validate
+npm run db:migrate
 npm run dev
 ```
 
@@ -69,12 +71,31 @@ npm run lint
 npm run build
 npm run db:validate
 npm run db:generate
+npm run db:migrate
 npm run check
 python -m pip install -r data/requirements.txt
 npm run data:prepare
 npm run data:check
+npm run data:validate
+npm run data:import
 ```
 
 ## 当前状态
 
-第 0 周准备已完成基础骨架。第 1-2 周已完成安徽首批数据整理：2024、2025 一分一段完整清洗，2024、2025 普通本科批投档官方长图留存并生成首批 OCR 样例，2025 招生计划样例已结构化。下一步进入数据库导入和基础查询 API。
+第 0 周准备已完成基础骨架。第 1-2 周已完成安徽首批数据整理：2024、2025 一分一段完整清洗，2024、2025 普通本科批投档官方长图留存并生成首批 OCR 样例，2025 招生计划样例已结构化。第 3 周已补齐 Prisma 迁移、数据导入命令、CSV 完整性校验和院校专业组基础查询 API。下一步进入用户建档和规则过滤。
+
+## 第 3 周数据库与查询
+
+```bash
+docker compose up -d postgres
+npm run db:migrate
+npm run data:validate
+npm run data:import
+```
+
+基础 API：
+
+- `GET /api/college-groups?year=2025&subjectTrack=physics&q=北京`
+- `GET /api/college-groups/2025/physics/2297/001`
+
+详见 `docs/week3-database-import.md`。

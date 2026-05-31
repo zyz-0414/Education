@@ -24,6 +24,7 @@ model Source {
   provincePolicies ProvincePolicy[]
   scoreSegments     ScoreSegment[]
   colleges          College[]
+  majors            Major[]
   collegeGroups     CollegeGroup[]
   majorPlans        MajorPlan[]
   admissionResults  AdmissionResult[]
@@ -86,6 +87,22 @@ model College {
   charterRules   CharterRule[]
 
   @@map("college")
+}
+
+model Major {
+  id             String  @id @default(uuid())
+  majorCode      String
+  majorName      String
+  majorCategory  String?
+  degreeCategory String?
+  duration       String?
+  notes          String?
+  sourceId       String
+  source         Source  @relation(fields: [sourceId], references: [id])
+
+  @@unique([majorCode, majorName, sourceId])
+  @@index([majorCode, majorName])
+  @@map("major")
 }
 
 model CollegeGroup {
