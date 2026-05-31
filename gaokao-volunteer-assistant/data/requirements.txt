@@ -1,0 +1,5 @@
+pandas>=2.2
+lxml>=5.0
+pillow>=10.0
+pypdf[crypto]>=5.0
+rapidocr-onnxruntime>=1.4

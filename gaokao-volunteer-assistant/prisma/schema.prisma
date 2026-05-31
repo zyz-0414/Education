@@ -1,0 +1,190 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Source {
+  id            String   @id @default(uuid())
+  title         String
+  sourceUrl     String
+  publisher     String?
+  publishedAt   DateTime?
+  fetchedAt     DateTime?
+  fileHash      String?
+  parserVersion String?
+  reviewStatus  String   @default("pending")
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  provincePolicies ProvincePolicy[]
+  scoreSegments     ScoreSegment[]
+  colleges          College[]
+  collegeGroups     CollegeGroup[]
+  majorPlans        MajorPlan[]
+  admissionResults  AdmissionResult[]
+  charterRules      CharterRule[]
+
+  @@map("source")
+}
+
+model ProvincePolicy {
+  id                 String  @id @default(uuid())
+  year               Int
+  provinceCode       String
+  batchCode          String
+  examMode           String
+  volunteerUnitType  String
+  maxVolunteers      Int
+  majorsPerGroup     Int?
+  hasMajorAdjustment Boolean @default(true)
+  policyJson         Json?
+  sourceId           String
+  source             Source  @relation(fields: [sourceId], references: [id])
+
+  @@unique([year, provinceCode, batchCode])
+  @@map("province_policy")
+}
+
+model ScoreSegment {
+  id              String @id @default(uuid())
+  year            Int
+  provinceCode    String
+  subjectTrack    String
+  score           Int
+  count           Int
+  cumulativeCount Int
+  rankMin         Int?
+  rankMax         Int?
+  sourceId        String
+  source          Source @relation(fields: [sourceId], references: [id])
+
+  @@unique([year, provinceCode, subjectTrack, score])
+  @@map("score_segment")
+}
+
+model College {
+  id             String  @id @default(uuid())
+  collegeCode    String  @unique
+  collegeName    String
+  province       String?
+  city           String?
+  level          String?
+  ownership      String?
+  tags           Json?
+  officialSite   String?
+  sourceId       String?
+  source         Source? @relation(fields: [sourceId], references: [id])
+
+  groups         CollegeGroup[]
+  majorPlans     MajorPlan[]
+  admissionItems AdmissionResult[]
+  charterRules   CharterRule[]
+
+  @@map("college")
+}
+
+model CollegeGroup {
+  id                 String @id @default(uuid())
+  year               Int
+  provinceCode       String
+  batchCode          String
+  subjectTrack       String
+  collegeCode        String
+  groupCode          String
+  subjectRequirement String
+  groupNote          String?
+  sourceId           String
+  source             Source @relation(fields: [sourceId], references: [id])
+  college            College @relation(fields: [collegeCode], references: [collegeCode])
+
+  majorPlans     MajorPlan[]
+  admissionItems AdmissionResult[]
+
+  @@unique([year, provinceCode, batchCode, subjectTrack, collegeCode, groupCode])
+  @@map("college_group")
+}
+
+model MajorPlan {
+  id                 String       @id @default(uuid())
+  year               Int
+  provinceCode       String
+  batchCode          String
+  subjectTrack       String
+  collegeCode        String
+  groupCode          String
+  majorCode          String
+  majorName          String
+  subjectRequirement String?
+  planCount          Int
+  tuition            Int?
+  duration           String?
+  campus             String?
+  note               String?
+  sourceId           String
+  source             Source       @relation(fields: [sourceId], references: [id])
+  college            College      @relation(fields: [collegeCode], references: [collegeCode])
+  group              CollegeGroup @relation(fields: [year, provinceCode, batchCode, subjectTrack, collegeCode, groupCode], references: [year, provinceCode, batchCode, subjectTrack, collegeCode, groupCode])
+
+  @@unique([year, provinceCode, batchCode, subjectTrack, collegeCode, groupCode, majorCode])
+  @@map("major_plan")
+}
+
+model AdmissionResult {
+  id            String       @id @default(uuid())
+  year          Int
+  provinceCode  String
+  batchCode     String
+  subjectTrack  String
+  collegeCode   String
+  groupCode     String
+  majorCode     String?
+  minScore      Int?
+  minRank       Int?
+  avgScore      Int?
+  avgRank       Int?
+  maxScore      Int?
+  maxRank       Int?
+  admittedCount Int?
+  sourceId      String
+  source        Source       @relation(fields: [sourceId], references: [id])
+  college       College      @relation(fields: [collegeCode], references: [collegeCode])
+  group         CollegeGroup @relation(fields: [year, provinceCode, batchCode, subjectTrack, collegeCode, groupCode], references: [year, provinceCode, batchCode, subjectTrack, collegeCode, groupCode])
+
+  @@index([year, provinceCode, batchCode, subjectTrack, collegeCode, groupCode])
+  @@map("admission_result")
+}
+
+model CharterRule {
+  id            String  @id @default(uuid())
+  year          Int
+  collegeCode   String
+  scopeType     String
+  scopeCode     String?
+  ruleType      String
+  conditionJson Json?
+  originalText  String
+  reviewStatus  String  @default("pending")
+  sourceId      String
+  source        Source  @relation(fields: [sourceId], references: [id])
+  college       College @relation(fields: [collegeCode], references: [collegeCode])
+
+  @@index([year, collegeCode, ruleType])
+  @@map("charter_rule")
+}
+
+model RecommendationRun {
+  id               String   @id @default(uuid())
+  userProfileJson  Json
+  dataVersion      String
+  algorithmVersion String
+  createdAt        DateTime @default(now())
+  mode             String   @default("balanced")
+  resultJson       Json
+
+  @@map("recommendation_run")
+}
