@@ -10,10 +10,13 @@
     "db:validate": "prisma validate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:ensure-local": "tsx -r dotenv/config data/scripts/ensure_local_database.ts",
     "data:prepare": "python data/scripts/prepare_week1_2_data.py",
     "data:check": "python data/scripts/check_csv_headers.py",
     "data:validate": "tsx -r dotenv/config data/scripts/validate_week3_data.ts",
     "data:import": "tsx -r dotenv/config data/scripts/import_week3_data.ts",
+    "test:week4": "tsx tests/week4-rules.ts",
+    "verify:week4": "npm run check && npm run data:check && npm run data:validate && npm run test:week4",
     "check": "npm run lint && npm run db:validate"
   },
   "dependencies": {

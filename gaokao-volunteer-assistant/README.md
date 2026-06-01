@@ -78,11 +78,12 @@ npm run data:prepare
 npm run data:check
 npm run data:validate
 npm run data:import
+npm run verify:week4
 ```
 
 ## 当前状态
 
-第 0 周准备已完成基础骨架。第 1-2 周已完成安徽首批数据整理：2024、2025 一分一段完整清洗，2024、2025 普通本科批投档官方长图留存并生成首批 OCR 样例，2025 招生计划样例已结构化。第 3 周已补齐 Prisma 迁移、数据导入命令、CSV 完整性校验和院校专业组基础查询 API。下一步进入用户建档和规则过滤。
+第 0 周准备已完成基础骨架。第 1-2 周已完成安徽首批数据整理：2024、2025 一分一段完整清洗，2024、2025 普通本科批投档官方长图留存并生成首批 OCR 样例，2025 招生计划样例已结构化。第 3 周已补齐 Prisma 迁移、数据导入命令、CSV 完整性校验和院校专业组基础查询 API。第 4 周已完成考生建档工作台、选科组合校验、分数位次校验、普通本科批过滤和选科不符过滤。下一步进入推荐算法。
 
 ## 第 3 周数据库与查询
 
@@ -99,3 +100,20 @@ npm run data:import
 - `GET /api/college-groups/2025/physics/2297/001`
 
 详见 `docs/week3-database-import.md`。
+
+## 第 4 周候选集
+
+```bash
+npm run test:week4
+npm run verify:week4
+```
+
+候选集 API：
+
+- `POST /api/candidate-groups`
+
+详见 `docs/week4-profile-filtering.md`。
+
+## 第 0-4 周本地数据库收口
+
+当前前四周代码、CSV 和规则校验可以通过，但真实候选集查询需要本机先有 PostgreSQL 服务。Windows 安装 Docker Desktop 或 PostgreSQL 后，按 `docs/week4-local-database-setup.md` 执行迁移、导入和接口验证。
