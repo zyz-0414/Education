@@ -25,3 +25,7 @@
 - 用户安装 PostgreSQL 18.4 后，确认服务 `postgresql-x64-18` 正常运行，`localhost:5432` 可连接。
 - 使用 `E:\PostqreSQL\bin\createdb.exe` 创建 `gaokao_volunteer_assistant`，并成功执行 `npm run db:migrate`、`npm run data:import`、`npm run verify:week4`。
 - 启动本地开发服务后，用真实数据库验证 `POST /api/candidate-groups`：2025 物理类 550 分、70000 位次样例校验通过并返回候选集。
+- 完成第 5 周推荐算法：新增位次模型保守修正、冲稳保分档、偏好评分、推荐排序和低置信度标记。
+- 新增 `POST /api/recommendations`，返回安徽普通本科批推荐列表及结构化推荐说明。
+- 新增 `docs/week5-recommendation-algorithm.md`、`npm run test:week5` 和 `npm run verify:week5`。
+- 第 5 周审查时将内部候选池放宽到 5000 条，避免正式数据量变大后推荐排序被候选预取上限截断。

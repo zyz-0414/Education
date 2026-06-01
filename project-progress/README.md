@@ -9,14 +9,15 @@
 - 双击启动入口：`D:\education\start-gaokao-assistant.bat`
 - 数据库自动启动：优先启动本机 PostgreSQL 服务 `postgresql*`，找不到服务时再尝试 Docker Desktop。
 
-## 前四周验收结论
+## 前五周验收结论
 
-第 0-4 周任务已全部完成并通过本机验证。
+第 0-5 周任务已全部完成并通过本机验证。
 
-- `npm run verify:week4` 已通过，覆盖 lint、Prisma schema、CSV 表头、CSV 完整性和第 4 周规则烟测。
+- `npm run verify:week5` 已通过，覆盖 lint、Prisma schema、CSV 表头、CSV 完整性、第 4 周规则烟测和第 5 周推荐算法测试。
 - PostgreSQL 18.4 服务已启动，`localhost:5432` 可连接。
 - 数据库 `gaokao_volunteer_assistant` 已创建，迁移和数据导入已完成。
 - `POST /api/candidate-groups` 已用真实数据库验证成功。
+- `POST /api/recommendations` 已实现，可生成安徽普通本科批推荐列表。
 - 当前页面可以在 `http://localhost:3000` 完成安徽考生建档、分数位次校验和规则候选集查询。
 
 ## 2026-06-01 启动与上传更新
@@ -81,6 +82,23 @@
 - 已新增规则烟测：
   - `npm run test:week4`
 
+### 第 5 周：推荐算法
+
+- 已实现参考位次模型：
+  - 最近两年最低位次加权；
+  - 招生计划变化修正；
+  - 位次波动保守修正。
+- 已实现冲、稳、保、过保、高危分档。
+- 已实现风险偏好、城市偏好、专业偏好、排斥方向、学费预算和计划明细偏好评分。
+- 已实现推荐排序。
+- 已实现低置信度标记和原因输出。
+- 已新增推荐接口：
+  - `POST /api/recommendations`
+- 已新增第 5 周说明和测试：
+  - `docs/week5-recommendation-algorithm.md`
+  - `npm run test:week5`
+  - `npm run verify:week5`
+
 ## 后续限制和待办
 
 ### 本机环境说明
@@ -102,7 +120,6 @@
 
 ### 第 5 周之后功能
 
-- 第 5 周推荐算法还没完成。
 - 第 6 周推荐结果页还没完成。
 - 第 7 周志愿表编辑器还没完成。
 - 第 8 周风险检测和报告还没完成。
@@ -111,9 +128,9 @@
 ## 下一步建议
 
 1. 如需命令行直接使用 `psql`，把 `E:\PostqreSQL\bin` 加入系统 PATH。
-2. 第 0-4 周已经闭环；后续再进入第 5 周：位次模型、冲稳保分档、推荐排序和低置信度标记。
+2. 第 0-5 周已经闭环；后续再进入第 6 周：推荐结果页、风险标签、推荐理由展示和院校专业组详情入口。
 
-> 当前只收口第 0-4 周时，第 5 周不需要进入。
+> 当前只收口第 0-5 周时，第 6 周不需要进入。
 
 ## 常用命令
 
@@ -123,6 +140,8 @@ npm run dev
 npm run check
 npm run test:week4
 npm run verify:week4
+npm run test:week5
+npm run verify:week5
 npm run data:validate
 npm run data:import
 ```

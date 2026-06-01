@@ -44,6 +44,8 @@ type ScoreRankIssue = {
   severity: "error" | "warning";
 };
 
+const candidatePoolLimit = 5000;
+
 function getEligibleMajorPlans(group: CandidateGroupWithRelations, selectedSubjects: ReturnType<typeof getSelectedAnhuiSubjects>) {
   return group.majorPlans.filter((plan) =>
     isSubjectRequirementSatisfied(plan.subjectRequirement ?? group.subjectRequirement, selectedSubjects),
@@ -132,7 +134,7 @@ export async function getCandidateCollegeGroups(
   profile: CandidateProfile,
   options: CandidateGroupQueryOptions = {},
 ) {
-  const limit = Math.min(Math.max(options.limit ?? 30, 1), 100);
+  const limit = Math.min(Math.max(options.limit ?? 30, 1), 500);
   const offset = Math.max(options.offset ?? 0, 0);
   const scoreRankCheck = await validateScoreAndRank(profile);
   const selectedSubjects = getSelectedAnhuiSubjects(profile);
@@ -176,7 +178,7 @@ export async function getCandidateCollegeGroups(
         { groupCode: "asc" },
       ],
       include: candidateGroupInclude,
-      take: 500,
+      take: candidatePoolLimit,
     }),
   ]);
 
