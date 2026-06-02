@@ -49,9 +49,9 @@
 ## 2026-06-02 数据增强
 
 - 接入用户放置在 `D:\education\data` 下的安徽近年 Excel 数据，并新增 `data/scripts/prepare_collected_anhui_data.py`。
-- `npm run data:prepare` 默认改为生成 2024-2025 专业组口径 cleaned CSV，旧样例/OCR 脚本保留为 `npm run data:prepare:legacy`。
-- 本轮采用 2024-2025 新高考专业组口径；2017-2023 旧文理科/院校专业口径暂不混入推荐模型。
-- cleaned CSV 已扩展为：`college_groups=9507`、`enrollment_plans=47401`、`admission_results=8723`、`colleges=1710`、`majors=20455`、`score_segments=1934`。
+- `npm run data:prepare` 默认改为生成收集版 cleaned CSV，旧样例/OCR 脚本保留为 `npm run data:prepare:legacy`。
+- 本轮采用 2024-2025 新高考专业组口径，并接入 2023 旧文理科院校级参考位次；2017-2022 旧文理科/院校专业口径暂不混入推荐模型。
+- cleaned CSV 已扩展为：`college_groups=11542`、`enrollment_plans=47401`、`admission_results=10758`、`colleges=1942`、`majors=20455`、`score_segments=2882`。
 - `data:import` 改为批量替换型导入，解决几万行招生计划逐行 upsert 超时问题；本机导入耗时约 11 秒。
 - 新增 `tests/collected-data-smoke.ts`、`npm run test:data` 和 `npm run verify:data`，防止回退到样例计划或选科要求文本污染。
 - 默认物理样例（2025、550 分、70000 位、化学+生物）在 `requirePlan=true` 下可推荐结果由 2 条提升到 294 条。
@@ -65,3 +65,9 @@
 - 左侧画像侧栏和右侧详情侧栏已在桌面布局下加入独立纵向滚动，长表单和长详情不会挤压主推荐列表。
 - 复测 `665/1450` 物理化学生物前 12 条未出现安徽大学、安徽医科大学等明显过保项；`640/7000` 打开高危后高危项和冲刺项按参考位次难度正确排序。
 - 已通过 `npm run verify:week7` 和 `npm run test:data`。
+
+## 2026-06-02 近三年位次模型
+
+- 2023 安徽改革前投档线已作为旧文理科院校级参考进入推荐模型：理科映射物理类，文科映射历史类，再选科目按不限处理。
+- 推荐历史匹配改为 2024/2025 专业组优先精确匹配、缺失时使用同院校相近专业组补充 + 2023 院校名称快照匹配，避免把补充参考误认为同组线。
+- `historicalRanks` 增加口径说明，推荐表格和右侧详情面板均展示近三年参考位次。

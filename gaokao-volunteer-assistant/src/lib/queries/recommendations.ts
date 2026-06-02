@@ -2,16 +2,18 @@ import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
 import { calculatePreferenceScore } from "@/lib/recommend/preference-score";
-import { calculateReferenceRank } from "@/lib/recommend/rank-model";
+import { calculateReferenceRank, type HistoricalRank } from "@/lib/recommend/rank-model";
 import { getTierByRankGap, tierLabels, type RecommendationTier } from "@/lib/recommend/tier";
 import type { CandidateProfile } from "@/lib/validators/profile";
 import { getCandidateCollegeGroups } from "./candidate-groups";
 
-const ALGORITHM_VERSION = "week5-rank-v1";
-const DEFAULT_DATA_VERSION = "dev-anhui-2026-prep";
+const ALGORITHM_VERSION = "week8-rank-v2";
+const DEFAULT_DATA_VERSION = "dev-anhui-2026-prep-v2";
 const RECOMMENDATION_POOL_LIMIT = 5000;
 const DEFAULT_RECOMMENDATION_LIMIT = 45;
 const MAX_COLLEGE_REPEAT_IN_PLAN = 3;
+const LEGACY_REFERENCE_YEAR = 2023;
+const LEGACY_GROUP_CODE = "000";
 
 type CandidateResult = Awaited<ReturnType<typeof getCandidateCollegeGroups>>;
 type CandidateItem = CandidateResult["items"][number];
@@ -22,6 +24,8 @@ type AdmissionHistoryRow = Prisma.AdmissionResultGetPayload<{
 }>;
 type AdmissionHistory = AdmissionHistoryRow & {
   collegeNameSnapshot: string | null;
+  subjectRequirementSnapshot: string | null;
+  matchScope?: HistoricalRank["scope"];
 };
 
 export type RecommendationQueryOptions = {
@@ -58,6 +62,10 @@ function normalizeCollegeName(value: string | null | undefined) {
   return (value ?? "").trim();
 }
 
+function normalizeCollegeNameForLegacy(value: string | null | undefined) {
+  return normalizeCollegeName(value).replace(/\s+/g, "");
+}
+
 function codeGroupKey(row: { collegeCode: string; groupCode: string }) {
   return `${row.collegeCode}|${row.groupCode}`;
 }
@@ -74,6 +82,10 @@ function itemKey(item: CandidateItem) {
   return rowKey(item.key, item.college.collegeName);
 }
 
+function legacyCollegeNameKey(value: string | null | undefined) {
+  return normalizeCollegeNameForLegacy(value);
+}
+
 function admissionHistoryKey(row: AdmissionHistory) {
   return rowKey(row, row.collegeNameSnapshot);
 }
@@ -84,10 +96,14 @@ function previousPlanKey(row: PreviousPlan) {
 
 function getReferenceYears(targetYear: number) {
   if (targetYear >= 2026) {
-    return [targetYear - 1, targetYear - 2, targetYear - 3].filter((year) => year >= 2024);
+    return [targetYear - 1, targetYear - 2, targetYear - 3].filter((year) => year >= LEGACY_REFERENCE_YEAR);
   }
 
-  return [targetYear, targetYear - 1, targetYear - 2].filter((year) => year >= 2024);
+  return [targetYear, targetYear - 1, targetYear - 2].filter((year) => year >= LEGACY_REFERENCE_YEAR);
+}
+
+function isLegacyAdmission(row: { year: number; groupCode: string }) {
+  return row.year === LEGACY_REFERENCE_YEAR && row.groupCode === LEGACY_GROUP_CODE;
 }
 
 function chooseGroupAdmissionByYear(rows: AdmissionHistory[]) {
@@ -98,6 +114,11 @@ function chooseGroupAdmissionByYear(rows: AdmissionHistory[]) {
 
     const existing = byYear.get(row.year);
     if (!existing) {
+      byYear.set(row.year, row);
+      continue;
+    }
+
+    if (isLegacyAdmission(existing) && isLegacyAdmission(row) && row.minRank < (existing.minRank ?? Infinity)) {
       byYear.set(row.year, row);
       continue;
     }
@@ -126,6 +147,38 @@ function calculatePlanChangeRatio(currentPlanCount: number, previousPlanCount: n
   return {
     value: (currentPlanCount - previousPlanCount) / previousPlanCount,
     reason: null,
+  };
+}
+
+function toHistoricalRank(history: AdmissionHistory): HistoricalRank {
+  if (isLegacyAdmission(history)) {
+    return {
+      year: history.year,
+      minRank: history.minRank ?? 0,
+      scope: "legacy_college",
+      label: "2023 旧文理科院校线",
+      note:
+        history.subjectTrack === "physics"
+          ? "2023 安徽改革前理科映射为物理类，再选科目按不限处理"
+          : "2023 安徽改革前文科映射为历史类，再选科目按不限处理",
+    };
+  }
+
+  if (history.matchScope === "college_fallback") {
+    return {
+      year: history.year,
+      minRank: history.minRank ?? 0,
+      scope: "college_fallback",
+      label: `${history.year} 同院校专业组参考`,
+      note: "未找到同组历史，按同院校同科类相近专业组位次补充",
+    };
+  }
+
+  return {
+    year: history.year,
+    minRank: history.minRank ?? 0,
+    scope: "group",
+    label: `${history.year} 专业组投档线`,
   };
 }
 
@@ -433,6 +486,75 @@ function selectBalancedRecommendations(
   return selected.slice(0, options.limit).sort(compareRecommendationDisplayOrder);
 }
 
+function getAnchorRank(histories: AdmissionHistory[]) {
+  return histories
+    .filter((history) => history.minRank)
+    .sort((a, b) => b.year - a.year)[0]?.minRank ?? null;
+}
+
+function chooseCollegeFallbackAdmission(
+  rows: AdmissionHistory[],
+  year: number,
+  subjectRequirement: string,
+  anchorRank: number | null,
+) {
+  const sameYearRows = rows.filter((row) => row.year === year && row.minRank && !isLegacyAdmission(row));
+  if (sameYearRows.length === 0) {
+    return null;
+  }
+
+  return [...sameYearRows].sort((a, b) => {
+    const aRequirementPenalty = a.subjectRequirementSnapshot === subjectRequirement ? 0 : 1;
+    const bRequirementPenalty = b.subjectRequirementSnapshot === subjectRequirement ? 0 : 1;
+    if (aRequirementPenalty !== bRequirementPenalty) {
+      return aRequirementPenalty - bRequirementPenalty;
+    }
+
+    if (anchorRank !== null) {
+      const aDistance = Math.abs((a.minRank ?? anchorRank) - anchorRank);
+      const bDistance = Math.abs((b.minRank ?? anchorRank) - anchorRank);
+      if (aDistance !== bDistance) {
+        return aDistance - bDistance;
+      }
+    }
+
+    return (a.minRank ?? Infinity) - (b.minRank ?? Infinity);
+  })[0];
+}
+
+function getCollegeFallbackHistories(
+  item: CandidateItem,
+  exactHistories: AdmissionHistory[],
+  collegeHistories: AdmissionHistory[],
+  referenceYears: number[],
+) {
+  const exactYears = new Set(exactHistories.map((history) => history.year));
+  const anchorRank = getAnchorRank(exactHistories);
+  const fallbackHistories: AdmissionHistory[] = [];
+
+  for (const year of referenceYears) {
+    if (year < 2024 || exactYears.has(year)) {
+      continue;
+    }
+
+    const fallback = chooseCollegeFallbackAdmission(
+      collegeHistories,
+      year,
+      item.subjectRequirement,
+      anchorRank,
+    );
+
+    if (fallback) {
+      fallbackHistories.push({
+        ...fallback,
+        matchScope: "college_fallback" as const,
+      });
+    }
+  }
+
+  return fallbackHistories;
+}
+
 function buildRecommendation(
   profile: CandidateProfile,
   item: CandidateItem,
@@ -442,10 +564,7 @@ function buildRecommendation(
   const historicalAdmissions = chooseGroupAdmissionByYear(histories);
   const planChange = calculatePlanChangeRatio(item.eligibility.eligiblePlanCount, previousPlanCount);
   const rankModel = calculateReferenceRank({
-    ranks: historicalAdmissions.map((history) => ({
-      year: history.year,
-      minRank: history.minRank ?? 0,
-    })),
+    ranks: historicalAdmissions.map(toHistoricalRank),
     planChangeRatio: planChange.value,
   });
   const rankGap = rankModel.referenceRank === null ? null : profile.rank - rankModel.referenceRank;
@@ -462,8 +581,19 @@ function buildRecommendation(
   });
   const confidenceReasons = new Set<string>();
 
-  if (rankModel.historicalRanks.length < 2) {
-    confidenceReasons.add("历史投档位次不足两年");
+  const exactGroupRankCount = rankModel.historicalRanks.filter((rank) => rank.scope === "group").length;
+  const hasCollegeFallbackRank = rankModel.historicalRanks.some((rank) => rank.scope === "college_fallback");
+
+  if (rankModel.historicalRanks.length < 3) {
+    confidenceReasons.add("近三年历史位次不完整");
+  }
+
+  if (exactGroupRankCount < 2) {
+    confidenceReasons.add("改革后专业组历史不足两年");
+  }
+
+  if (hasCollegeFallbackRank) {
+    confidenceReasons.add("含同院校专业组补充参考");
   }
 
   if (rankModel.referenceRank === null) {
@@ -471,7 +601,7 @@ function buildRecommendation(
   }
 
   if (rankModel.volatilityRatio !== null && rankModel.volatilityRatio > 0.2) {
-    confidenceReasons.add("近两年位次波动较大");
+    confidenceReasons.add("相邻年份位次波动较大");
   }
 
   if (
@@ -622,30 +752,75 @@ export async function getCollegeGroupRecommendations(
         collegeCode: true,
         groupCode: true,
         collegeNameSnapshot: true,
+        subjectRequirement: true,
       },
     }),
   ]);
   const snapshotByYearGroup = new Map(
-    groupSnapshots.map((row) => [yearCodeGroupKey(row), row.collegeNameSnapshot]),
+    groupSnapshots.map((row) => [yearCodeGroupKey(row), row]),
   );
-  const historyRows: AdmissionHistory[] = allHistoryRows
+  const exactHistoryRows: AdmissionHistory[] = allHistoryRows
+    .filter((row) => !isLegacyAdmission(row))
     .filter((row) => candidateKeySet.has(codeGroupKey(row)))
-    .map((row) => ({
-      ...row,
-      collegeNameSnapshot: snapshotByYearGroup.get(yearCodeGroupKey(row)) ?? null,
-    }));
+    .map((row) => {
+      const snapshot = snapshotByYearGroup.get(yearCodeGroupKey(row));
+      return {
+        ...row,
+        collegeNameSnapshot: snapshot?.collegeNameSnapshot ?? null,
+        subjectRequirementSnapshot: snapshot?.subjectRequirement ?? null,
+        matchScope: "group" as const,
+      };
+    });
+  const allPostReformHistoryRows: AdmissionHistory[] = allHistoryRows
+    .filter((row) => !isLegacyAdmission(row))
+    .map((row) => {
+      const snapshot = snapshotByYearGroup.get(yearCodeGroupKey(row));
+      return {
+        ...row,
+        collegeNameSnapshot: snapshot?.collegeNameSnapshot ?? null,
+        subjectRequirementSnapshot: snapshot?.subjectRequirement ?? null,
+      };
+    })
+    .filter((row) => legacyCollegeNameKey(row.collegeNameSnapshot));
+  const legacyHistoryRows: AdmissionHistory[] = allHistoryRows
+    .filter(isLegacyAdmission)
+    .map((row) => {
+      const snapshot = snapshotByYearGroup.get(yearCodeGroupKey(row));
+      return {
+        ...row,
+        collegeNameSnapshot: snapshot?.collegeNameSnapshot ?? null,
+        subjectRequirementSnapshot: snapshot?.subjectRequirement ?? null,
+        matchScope: "legacy_college" as const,
+      };
+    })
+    .filter((row) => legacyCollegeNameKey(row.collegeNameSnapshot));
   const previousPlans: PreviousPlan[] = allPreviousPlanRows
     .filter((row) => candidateKeySet.has(codeGroupKey(row)))
-    .map((row) => ({
-      ...row,
-      collegeNameSnapshot: snapshotByYearGroup.get(yearCodeGroupKey(row)) ?? null,
-    }));
+    .map((row) => {
+      const snapshot = snapshotByYearGroup.get(yearCodeGroupKey(row));
+      return {
+        ...row,
+        collegeNameSnapshot: snapshot?.collegeNameSnapshot ?? null,
+      };
+    });
   const historiesByGroup = new Map<string, AdmissionHistory[]>();
+  const postReformHistoriesByCollege = new Map<string, AdmissionHistory[]>();
+  const legacyHistoriesByCollege = new Map<string, AdmissionHistory[]>();
   const previousPlanCounts = new Map<string, number>();
 
-  for (const history of historyRows) {
+  for (const history of exactHistoryRows) {
     const key = admissionHistoryKey(history);
     historiesByGroup.set(key, [...(historiesByGroup.get(key) ?? []), history]);
+  }
+
+  for (const history of allPostReformHistoryRows) {
+    const key = legacyCollegeNameKey(history.collegeNameSnapshot);
+    postReformHistoriesByCollege.set(key, [...(postReformHistoriesByCollege.get(key) ?? []), history]);
+  }
+
+  for (const history of legacyHistoryRows) {
+    const key = legacyCollegeNameKey(history.collegeNameSnapshot);
+    legacyHistoriesByCollege.set(key, [...(legacyHistoriesByCollege.get(key) ?? []), history]);
   }
 
   for (const plan of previousPlans) {
@@ -654,14 +829,27 @@ export async function getCollegeGroupRecommendations(
   }
 
   const recommendations = candidateResult.items
-    .map((item) =>
-      buildRecommendation(
+    .map((item) => {
+      const exactHistories = historiesByGroup.get(itemKey(item)) ?? [];
+      const collegeKey = legacyCollegeNameKey(item.college.collegeName);
+      const fallbackHistories = getCollegeFallbackHistories(
+        item,
+        exactHistories,
+        postReformHistoriesByCollege.get(collegeKey) ?? [],
+        referenceYears,
+      );
+
+      return buildRecommendation(
         profile,
         item,
-        historiesByGroup.get(itemKey(item)) ?? [],
+        [
+          ...exactHistories,
+          ...fallbackHistories,
+          ...(legacyHistoriesByCollege.get(collegeKey) ?? []),
+        ],
         previousPlanCounts.get(itemKey(item)),
-      ),
-    )
+      );
+    })
     .filter((item) => item.recommendation.tier !== null)
     .filter((item) => includeHighRisk || item.recommendation.tier !== "high_risk")
     .sort(compareRecommendationRankFit);

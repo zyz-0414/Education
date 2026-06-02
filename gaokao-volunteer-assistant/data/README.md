@@ -37,7 +37,7 @@ npm run verify:data
 npm run data:import
 ```
 
-`data:prepare` 当前默认运行 `prepare_collected_anhui_data.py`，从 `D:\education\data` 读取 2024-2025 安徽专业组口径 Excel 并覆盖 cleaned CSV。旧的首批样例/OCR 脚本保留为 `npm run data:prepare:legacy`。2017-2023 旧文理科口径数据暂不混入专业组推荐模型。
+`data:prepare` 当前默认运行 `prepare_collected_anhui_data.py`，从 `D:\education\data` 读取安徽收集版 Excel 并覆盖 cleaned CSV。2024-2025 使用新高考专业组口径；2023 理科映射为物理类、文科映射为历史类，作为改革前院校级第三年参考进入位次模型，再选科目按不限处理。旧的首批样例/OCR 脚本保留为 `npm run data:prepare:legacy`。2017-2022 旧文理科口径数据仍只做背景参考。
 
 ## 第 3 周入库命令
 

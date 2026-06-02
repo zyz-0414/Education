@@ -27,8 +27,20 @@ const twoYearReference = calculateReferenceRank({
   ],
 });
 
-assert.equal(twoYearReference.referenceRank, 10400);
+assert.equal(twoYearReference.referenceRank, 10412);
 assert.equal(twoYearReference.confidence, "medium");
+
+const threeYearReference = calculateReferenceRank({
+  ranks: [
+    { year: 2025, minRank: 10000, scope: "group" },
+    { year: 2024, minRank: 11000, scope: "group" },
+    { year: 2023, minRank: 12000, scope: "legacy_college" },
+  ],
+});
+
+assert.equal(threeYearReference.referenceRank, 10650);
+assert.equal(threeYearReference.confidence, "medium");
+assert.ok(threeYearReference.reasons.includes("含 2023 改革前文理科院校级位次参考"));
 
 const oneYearReference = calculateReferenceRank({
   ranks: [{ year: 2025, minRank: 10000 }],

@@ -1,6 +1,11 @@
-type HistoricalRank = {
+export type HistoricalRankScope = "group" | "college_fallback" | "legacy_college";
+
+export type HistoricalRank = {
   year: number;
   minRank: number;
+  scope?: HistoricalRankScope;
+  label?: string;
+  note?: string;
 };
 
 type ReferenceRankInput = {
@@ -28,10 +33,14 @@ export function calculateReferenceRank({ ranks, planChangeRatio = 0 }: Reference
     };
   }
 
-  const weights = usableRanks.length === 1 ? [1] : [0.6, 0.4, 0.25, 0.15, 0.1];
-  const totalWeight = usableRanks.reduce((sum, _rank, index) => sum + (weights[index] ?? 0.1), 0);
+  const weights = usableRanks.length === 1 ? [1] : [0.5, 0.35, 0.15, 0.08, 0.05];
+  const getWeight = (rank: HistoricalRank, index: number) => {
+    const baseWeight = weights[index] ?? 0.05;
+    return rank.scope === "legacy_college" ? Math.min(baseWeight, 0.15) : baseWeight;
+  };
+  const totalWeight = usableRanks.reduce((sum, rank, index) => sum + getWeight(rank, index), 0);
   const weightedRank =
-    usableRanks.reduce((sum, rank, index) => sum + rank.minRank * (weights[index] ?? 0.1), 0) /
+    usableRanks.reduce((sum, rank, index) => sum + rank.minRank * getWeight(rank, index), 0) /
     totalWeight;
 
   const boundedPlanChangeRatio = Math.max(Math.min(planChangeRatio, 0.3), -0.3);
@@ -49,13 +58,24 @@ export function calculateReferenceRank({ ranks, planChangeRatio = 0 }: Reference
     volatilityRatio && volatilityRatio > 0.12 ? -weightedRank * Math.min(volatilityRatio * 0.1, 0.05) : 0;
 
   if (volatilityRatio && volatilityRatio > 0.12) {
-    reasons.push(`近两年位次波动 ${(volatilityRatio * 100).toFixed(1)}%，已做保守修正`);
+    reasons.push(`相邻年份位次波动 ${(volatilityRatio * 100).toFixed(1)}%，已做保守修正`);
   }
 
   const referenceRank = Math.round(weightedRank + planAdjustment + volatilityAdjustment);
+  const postReformGroupCount = usableRanks.filter((rank) => rank.scope !== "legacy_college").length;
+  const hasLegacyReference = usableRanks.some((rank) => rank.scope === "legacy_college");
   const confidence: ReferenceRankConfidence =
-    usableRanks.length >= 2 && (!volatilityRatio || volatilityRatio <= 0.2) ? "medium" : "low";
-  const baseReason = usableRanks.length >= 2 ? "使用改革后同口径历史位次加权" : "仅有单年数据，需标低置信度";
+    postReformGroupCount >= 2 && (!volatilityRatio || volatilityRatio <= 0.2) ? "medium" : "low";
+  const baseReason =
+    postReformGroupCount >= 2
+      ? "使用近三年历史位次加权"
+      : usableRanks.length >= 2
+        ? "改革后专业组历史不足两年，结合旧文理科参考"
+        : "仅有单年数据，需标低置信度";
+
+  if (hasLegacyReference) {
+    reasons.push("含 2023 改革前文理科院校级位次参考");
+  }
 
   return {
     referenceRank,

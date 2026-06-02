@@ -20,7 +20,8 @@ SOURCES = PROJECT_ROOT / "data" / "sources" / "source_index.csv"
 
 PROVINCE_CODE = "AH"
 BATCH_CODE = "ordinary_undergraduate"
-PARSER_VERSION = "collected_anhui_excel_v1"
+PARSER_VERSION = "collected_anhui_excel_v2"
+LEGACY_GROUP_CODE = "000"
 
 SCORE_HEADERS = [
     "year",
@@ -199,7 +200,7 @@ def normalize_subject_requirement(value: object) -> str:
 
 def normalize_batch(value: object) -> str | None:
     text = norm(value)
-    return BATCH_CODE if text in {"本科批", "普通本科批"} else None
+    return BATCH_CODE if text in {"本科批", "普通本科批", "本科一批", "本科第一批", "本科二批", "本科第二批"} else None
 
 
 def source_id(kind: str, year: int) -> str:
@@ -302,6 +303,74 @@ def collect_score_segments(path: Path, year: int, subject_track: str) -> list[di
                     "source_id": source_id("score_segments", year),
                 }
             )
+    finally:
+        workbook.close()
+    rows.sort(key=lambda row: (row["year"], row["subject_track"], -int(row["score"])))
+    return rows
+
+
+def parse_single_score(value: object) -> int | None:
+    text = norm(value)
+    if "~" in text or "～" in text or "-" in text:
+        return None
+    return parse_int(text)
+
+
+def parse_rank_range(value: object) -> tuple[int, int] | None:
+    text = norm(value).replace(",", "")
+    ranks = [int(match) for match in re.findall(r"\d+", text)]
+    if not ranks:
+        return None
+    if len(ranks) == 1:
+        return ranks[0], ranks[0]
+    return min(ranks[0], ranks[1]), max(ranks[0], ranks[1])
+
+
+def collect_2023_score_segments(path: Path) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        for worksheet in workbook.worksheets:
+            title_row = " ".join(norm(cell.value) for cell in next(worksheet.iter_rows(min_row=1, max_row=1)))
+            if "理科" in title_row:
+                subject_track = "physics"
+            elif "文科" in title_row:
+                subject_track = "history"
+            else:
+                continue
+
+            header_row, headers = find_header_row(worksheet, {"分数", "位次区间", "同分人数"})
+            score_index = headers.index("分数")
+            rank_index = headers.index("位次区间")
+            count_index = headers.index("同分人数")
+            last_rank_max = 0
+
+            for row in worksheet.iter_rows(min_row=header_row + 1, values_only=True):
+                rank_range = parse_rank_range(row[rank_index] if len(row) > rank_index else None)
+                if rank_range is None:
+                    continue
+                rank_min, rank_max = rank_range
+                if last_rank_max and rank_max < last_rank_max:
+                    break
+                last_rank_max = rank_max
+
+                score = parse_single_score(row[score_index] if len(row) > score_index else None)
+                count = parse_int(row[count_index] if len(row) > count_index else None)
+                if score is None:
+                    continue
+                rows.append(
+                    {
+                        "year": 2023,
+                        "province_code": PROVINCE_CODE,
+                        "subject_track": subject_track,
+                        "score": score,
+                        "count": count or rank_max - rank_min + 1,
+                        "cumulative_count": rank_max,
+                        "rank_min": rank_min,
+                        "rank_max": rank_max,
+                        "source_id": source_id("score_segments", 2023),
+                    }
+                )
     finally:
         workbook.close()
     rows.sort(key=lambda row: (row["year"], row["subject_track"], -int(row["score"])))
@@ -610,6 +679,59 @@ def collect_2024_admissions(
     return list(rows.values())
 
 
+def collect_2023_legacy_admissions(
+    path: Path,
+    groups: dict[tuple[object, ...], dict[str, object]],
+    colleges: dict[str, dict[str, object]],
+) -> list[dict[str, object]]:
+    rows: dict[tuple[object, ...], dict[str, object]] = {}
+    sid = source_id("legacy_admission", 2023)
+    for item in iter_dict_rows(path, {"年份", "学校", "招生代码", "批次", "科目", "最低分", "最低分位次"}):
+        batch = normalize_batch(item.get("批次"))
+        year = parse_int(item.get("年份"))
+        if year != 2023 or batch != BATCH_CODE:
+            continue
+
+        college_code = normalize_code(item.get("招生代码"), 4)
+        college_name = norm(item.get("学校"))
+        subject_track = normalize_subject_track(item.get("科目"))
+        min_rank = parse_int(item.get("最低分位次"))
+        if not college_code or not college_name or min_rank is None:
+            continue
+
+        row = {
+            "year": 2023,
+            "province_code": PROVINCE_CODE,
+            "batch_code": BATCH_CODE,
+            "subject_track": subject_track,
+            "college_code": college_code,
+            "group_code": LEGACY_GROUP_CODE,
+            "major_code": "",
+            "min_score": parse_int(item.get("最低分")) or "",
+            "min_rank": min_rank,
+            "avg_score": parse_int(item.get("平均分")) or "",
+            "avg_rank": "",
+            "max_score": parse_int(item.get("最高分")) or "",
+            "max_rank": "",
+            "admitted_count": parse_int(item.get("录取人数")) or "",
+            "source_id": sid,
+        }
+        key = group_key(row)
+        existing = rows.get(key)
+        if not existing or min_rank < int(existing["min_rank"]):
+            rows[key] = row
+
+        direction = norm(item.get("学校方向"))
+        raw_batch = norm(item.get("批次"))
+        note = f"2023改革前{raw_batch}{norm(item.get('科目'))}院校投档线"
+        if direction and direction != college_name:
+            note = f"{note}; 方向：{direction}"
+
+        colleges.setdefault(college_code, make_college(college_code, college_name, sid))
+        add_group(groups, row, college_name, "不限", note, sid)
+    return list(rows.values())
+
+
 def enrich_colleges_from_2025_major_admissions(path: Path, colleges: dict[str, dict[str, object]]) -> None:
     for item in iter_dict_rows(path, {"年份", "生源地", "批次", "科类", "院校代码", "院校名称", "最低位次"}):
         if parse_int(item.get("年份")) != 2025 or normalize_batch(item.get("批次")) != BATCH_CODE:
@@ -697,12 +819,14 @@ def main() -> None:
         raise SystemExit(f"external data directory not found: {external_root}")
 
     files = {
+        "score_2023": find_one(external_root, "安徽_一分一段_2023.xlsx"),
         "score_2024_physics": find_one(external_root, "安徽_一分一段_2024_物理组.xlsx"),
         "score_2024_history": find_one(external_root, "安徽_一分一段_2024_历史组.xlsx"),
         "score_2025_physics": find_one(external_root, "安徽2025一分一段表（物理）.xlsx"),
         "score_2025_history": find_one(external_root, "安徽2025一分一段表（历史）.xlsx"),
         "plan_2024": find_one(external_root, "安徽_招生计划_2024.xlsx"),
         "plan_2025": find_one(external_root, "安徽-2025-招生计划.xlsx"),
+        "admission_2023": find_one(external_root, "安徽_投档线_2023.xlsx"),
         "admission_2024": find_one(external_root, "安徽_投档线_2024.xlsx"),
         "admission_2025": find_one(external_root, "安徽25年专业组投档线最新.xlsx"),
         "major_admission_2025": find_one(external_root, "安徽省2025年专业分数线.xlsx"),
@@ -713,6 +837,7 @@ def main() -> None:
     majors: dict[tuple[str, str, str], dict[str, object]] = {}
 
     score_rows = []
+    score_rows.extend(collect_2023_score_segments(files["score_2023"]))
     score_rows.extend(collect_score_segments(files["score_2024_physics"], 2024, "physics"))
     score_rows.extend(collect_score_segments(files["score_2024_history"], 2024, "history"))
     score_rows.extend(collect_score_segments(files["score_2025_physics"], 2025, "physics"))
@@ -725,13 +850,16 @@ def main() -> None:
     admission_rows = []
     admission_rows.extend(collect_2024_admissions(files["admission_2024"], groups, colleges))
     admission_rows.extend(collect_2025_admissions(files["admission_2025"], groups, colleges))
+    admission_rows.extend(collect_2023_legacy_admissions(files["admission_2023"], groups, colleges))
     enrich_colleges_from_2025_major_admissions(files["major_admission_2025"], colleges)
 
     specs = [
+        SourceSpec(source_id("score_segments", 2023), "安徽2023一分一段表（理科/文科）", files["score_2023"], notes="改革前文理科；理科映射为物理类，文科映射为历史类"),
         SourceSpec(source_id("score_segments", 2024), "安徽2024一分一段表（物理/历史）", files["score_2024_physics"], notes="同目录历史组文件一并解析"),
         SourceSpec(source_id("score_segments", 2025), "安徽2025一分一段表（物理/历史）", files["score_2025_physics"], notes="同目录历史组文件一并解析"),
         SourceSpec(source_id("enrollment_plan", 2024), "安徽2024普通本科批招生计划", files["plan_2024"]),
         SourceSpec(source_id("enrollment_plan", 2025), "安徽2025普通本科批招生计划", files["plan_2025"]),
+        SourceSpec(source_id("legacy_admission", 2023), "安徽2023普通本科批旧文理科院校投档线", files["admission_2023"], notes="改革前文理科院校级口径；本科一批/二批合并作普通本科参考"),
         SourceSpec(source_id("group_admission", 2024), "安徽2024普通本科批专业组投档线", files["admission_2024"]),
         SourceSpec(source_id("group_admission", 2025), "安徽2025普通本科批专业组投档线", files["admission_2025"]),
     ]

@@ -7,7 +7,7 @@ import {
   BadgeCheck,
   BarChart3,
   BookOpenCheck,
-  ChevronRight,
+  Check,
   CircleAlert,
   ClipboardList,
   Database,
@@ -32,7 +32,7 @@ import {
   WalletCards,
   XCircle,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   analyzeVolunteerPlan,
@@ -132,7 +132,13 @@ type RecommendationItem = {
     modelReasons: string[];
     preferenceMatches: string[];
     preferencePenalties: string[];
-    historicalRanks: Array<{ year: number; minRank: number }>;
+    historicalRanks: Array<{
+      year: number;
+      minRank: number;
+      scope?: "group" | "college_fallback" | "legacy_college";
+      label?: string;
+      note?: string;
+    }>;
     planChangeRatio: number;
     volatilityRatio: number | null;
     explanations: string[];
@@ -229,6 +235,20 @@ function formatSignedPercent(value: number | null | undefined) {
   if (typeof value !== "number") return "暂无";
   const sign = value > 0 ? "+" : "";
   return `${sign}${(value * 100).toFixed(1)}%`;
+}
+
+function getHistoricalRankLabel(rank: RecommendationItem["recommendation"]["historicalRanks"][number]) {
+  if (rank.label) return rank.label;
+  if (rank.scope === "college_fallback") return `${rank.year} 同院校专业组参考`;
+  return rank.scope === "legacy_college" ? `${rank.year} 旧文理科院校线` : `${rank.year} 专业组投档线`;
+}
+
+function formatCompactHistoricalRanks(item: RecommendationItem) {
+  if (!item.recommendation.historicalRanks.length) return "暂无";
+  return item.recommendation.historicalRanks
+    .slice(0, 3)
+    .map((rank) => `${rank.year}: ${formatNumber(rank.minRank)}`)
+    .join(" / ");
 }
 
 function getSubjectTrackLabel(value: FirstChoiceSubject) {
@@ -419,6 +439,15 @@ function MetricBlock({
   );
 }
 
+function handleKeyboardSelect(event: React.KeyboardEvent<HTMLElement>, onSelect: () => void) {
+  if (event.currentTarget !== event.target) return;
+
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    onSelect();
+  }
+}
+
 function RecommendationCard({
   item,
   selected,
@@ -434,8 +463,18 @@ function RecommendationCard({
   onSelect: () => void;
   onAdd: () => void;
 }) {
+  const addDisabled = inVolunteerPlan || (!inVolunteerPlan && planFull);
+
   return (
-    <article className={`rounded-lg border bg-white p-4 shadow-sm ${selected ? "border-accent" : "border-line"}`}>
+    <article
+      className={`cursor-pointer rounded-lg border bg-white p-4 shadow-sm transition hover:border-accent hover:bg-background/60 ${
+        selected ? "border-accent bg-accent-soft/50" : "border-line"
+      }`}
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(event) => handleKeyboardSelect(event, onSelect)}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <TierBadge tier={item.recommendation.tier} label={item.recommendation.tierLabel} />
@@ -445,26 +484,23 @@ function RecommendationCard({
             {item.eligibility.requirement}
           </p>
         </div>
-        <div className="grid shrink-0 gap-2">
-          <button
-            className="inline-flex h-9 items-center gap-1 rounded border border-line px-3 text-xs font-semibold text-foreground hover:border-accent hover:text-accent"
-            type="button"
-            onClick={onSelect}
-          >
-            详情
-            <ChevronRight aria-hidden className="h-4 w-4" />
-          </button>
-          <button
-            className="inline-flex h-9 items-center gap-1 rounded border border-line px-3 text-xs font-semibold text-foreground hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={inVolunteerPlan || (!inVolunteerPlan && planFull)}
-            title={inVolunteerPlan ? "已加入志愿表" : "加入志愿表"}
-            type="button"
-            onClick={onAdd}
-          >
-            <Plus aria-hidden className="h-4 w-4" />
-            {inVolunteerPlan ? "已加" : "加入"}
-          </button>
-        </div>
+        <button
+          aria-label={inVolunteerPlan ? "已加入志愿表" : "加入志愿表"}
+          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border text-sm font-semibold transition disabled:cursor-not-allowed ${
+            inVolunteerPlan
+              ? "border-success bg-success-soft text-success disabled:opacity-80"
+              : "border-line bg-white text-foreground hover:border-accent hover:text-accent disabled:opacity-50"
+          }`}
+          disabled={addDisabled}
+          title={inVolunteerPlan ? "已加入志愿表" : "加入志愿表"}
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onAdd();
+          }}
+        >
+          {inVolunteerPlan ? <Check aria-hidden className="h-4 w-4" /> : <Plus aria-hidden className="h-4 w-4" />}
+        </button>
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
@@ -496,9 +532,15 @@ function RecommendationCard({
 function RecommendationDetailPanel({
   item,
   profile,
+  inVolunteerPlan = false,
+  planFull = false,
+  onAdd,
 }: {
   item: RecommendationItem | null;
   profile: RecommendationResult["profile"] | null;
+  inVolunteerPlan?: boolean;
+  planFull?: boolean;
+  onAdd?: () => void;
 }) {
   if (!item) {
     return (
@@ -511,6 +553,7 @@ function RecommendationDetailPanel({
 
   const riskPills = getRiskPills(item);
   const detailHref = getDetailHref(item);
+  const addDisabled = inVolunteerPlan || (!inVolunteerPlan && planFull) || !onAdd;
 
   return (
     <aside className="rounded-lg border border-line bg-panel p-5 shadow-sm xl:sticky xl:top-5 xl:max-h-[calc(100vh-2.5rem)] xl:self-start xl:overflow-y-auto xl:[scrollbar-gutter:stable]">
@@ -523,16 +566,32 @@ function RecommendationDetailPanel({
             {item.college.city ? ` ${item.college.city}` : ""}
           </p>
         </div>
-        <a
-          aria-label="打开院校专业组数据"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-line text-muted hover:border-accent hover:text-accent"
-          href={detailHref}
-          rel="noreferrer"
-          target="_blank"
-          title="打开院校专业组数据"
-        >
-          <ExternalLink aria-hidden className="h-4 w-4" />
-        </a>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            aria-label={inVolunteerPlan ? "已加入志愿表" : "加入志愿表"}
+            className={`inline-flex h-9 w-9 items-center justify-center rounded border transition disabled:cursor-not-allowed ${
+              inVolunteerPlan
+                ? "border-success bg-success-soft text-success disabled:opacity-80"
+                : "border-line text-muted hover:border-accent hover:text-accent disabled:opacity-50"
+            }`}
+            disabled={addDisabled}
+            title={inVolunteerPlan ? "已加入志愿表" : "加入志愿表"}
+            type="button"
+            onClick={onAdd}
+          >
+            {inVolunteerPlan ? <Check aria-hidden className="h-4 w-4" /> : <Plus aria-hidden className="h-4 w-4" />}
+          </button>
+          <a
+            aria-label="打开院校专业组数据"
+            className="inline-flex h-9 w-9 items-center justify-center rounded border border-line text-muted transition hover:border-accent hover:text-accent"
+            href={detailHref}
+            rel="noreferrer"
+            target="_blank"
+            title="打开院校专业组数据"
+          >
+            <ExternalLink aria-hidden className="h-4 w-4" />
+          </a>
+        </div>
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
@@ -603,17 +662,20 @@ function RecommendationDetailPanel({
       <section className="mt-5">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <LineChart aria-hidden className="h-4 w-4 text-info" />
-          历史位次
+          近三年参考位次
         </div>
         <div className="mt-3 grid gap-2">
           {item.recommendation.historicalRanks.length ? (
             item.recommendation.historicalRanks.map((rank) => (
               <div
-                className="flex items-center justify-between rounded border border-line bg-background px-3 py-2 text-sm"
+                className="flex items-start justify-between gap-3 rounded border border-line bg-background px-3 py-2 text-sm"
                 key={rank.year}
               >
-                <span className="text-muted">{rank.year}</span>
-                <span className="font-semibold">{formatNumber(rank.minRank)}</span>
+                <span className="min-w-0 text-muted">
+                  <span className="block font-medium text-foreground">{getHistoricalRankLabel(rank)}</span>
+                  {rank.note ? <span className="mt-0.5 block text-xs leading-5">{rank.note}</span> : null}
+                </span>
+                <span className="shrink-0 font-semibold">{formatNumber(rank.minRank)}</span>
               </div>
             ))
           ) : (
@@ -937,6 +999,8 @@ export function CandidateProfileWorkspace() {
   const [volunteerPlanMessage, setVolunteerPlanMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+  const recommendationTopScrollRef = useRef<HTMLDivElement>(null);
+  const recommendationTableScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -989,6 +1053,25 @@ export function CandidateProfileWorkspace() {
     return tierOrder.reduce((sum, tier) => sum + result.filters.tierCounts[tier], 0);
   }, [result]);
 
+  const addableRecommendationCount = useMemo(() => {
+    if (!result) return 0;
+
+    const references = volunteerPlanItems.map(toVolunteerPlanReference);
+    let count = 0;
+
+    for (const item of result.items) {
+      const reference = toVolunteerPlanReference(item);
+      const decision = canAddVolunteerPlanItem(references, reference);
+
+      if (!decision.ok) continue;
+
+      references.push(reference);
+      count += 1;
+    }
+
+    return count;
+  }, [result, volunteerPlanItems]);
+
   function toggleSecondChoice(subject: SecondChoiceSubject) {
     setSecondChoiceSubjects((current) => {
       if (current.includes(subject)) {
@@ -1023,6 +1106,54 @@ export function CandidateProfileWorkspace() {
     setSelectedKey(getItemKey(item));
     setVolunteerPlanMessage(`${item.college.collegeName} 已加入志愿表`);
     markVolunteerPlanDirty();
+  }
+
+  function addVisibleRecommendationsToVolunteerPlan() {
+    if (!result?.items.length) {
+      setVolunteerPlanMessage("暂无可加入的推荐项");
+      return;
+    }
+
+    const nextItems = [...volunteerPlanItems];
+    const references = nextItems.map(toVolunteerPlanReference);
+    let firstAddedKey: string | null = null;
+
+    for (const item of result.items) {
+      const reference = toVolunteerPlanReference(item);
+      const decision = canAddVolunteerPlanItem(references, reference);
+
+      if (!decision.ok) continue;
+
+      nextItems.push(item);
+      references.push(reference);
+      firstAddedKey ??= getItemKey(item);
+    }
+
+    const addedCount = nextItems.length - volunteerPlanItems.length;
+
+    if (!addedCount) {
+      setVolunteerPlanMessage(volunteerPlanAnalysis.isFull ? "志愿表已满" : "当前推荐已全部加入志愿表");
+      return;
+    }
+
+    setVolunteerPlanItems(nextItems);
+    setVolunteerPlanProfile(result.profile);
+    setSelectedKey(firstAddedKey);
+    setVolunteerPlanMessage(`已加入 ${addedCount} 个推荐项`);
+    markVolunteerPlanDirty();
+  }
+
+  function syncRecommendationTableScroll(source: "top" | "table") {
+    const top = recommendationTopScrollRef.current;
+    const table = recommendationTableScrollRef.current;
+
+    if (!top || !table) return;
+
+    if (source === "top") {
+      table.scrollLeft = top.scrollLeft;
+    } else {
+      top.scrollLeft = table.scrollLeft;
+    }
   }
 
   function removeFromVolunteerPlan(item: RecommendationItem) {
@@ -1489,15 +1620,43 @@ export function CandidateProfileWorkspace() {
                   </p>
                 </div>
                 {result ? (
-                  <span className="rounded border border-line bg-background px-3 py-1 text-sm text-muted">
-                    排除选科不符 {result.filters.subjectMismatchCount} 个
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded border border-line bg-background px-3 py-1 text-sm text-muted">
+                      排除选科不符 {result.filters.subjectMismatchCount} 个
+                    </span>
+                    <button
+                      className="inline-flex h-9 items-center gap-2 rounded border border-line bg-white px-3 text-sm font-semibold text-foreground transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={addableRecommendationCount === 0}
+                      title={addableRecommendationCount ? "将当前推荐加入志愿表" : "当前推荐已全部加入志愿表"}
+                      type="button"
+                      onClick={addVisibleRecommendationsToVolunteerPlan}
+                    >
+                      {addableRecommendationCount ? (
+                        <Plus aria-hidden className="h-4 w-4" />
+                      ) : (
+                        <Check aria-hidden className="h-4 w-4" />
+                      )}
+                      {addableRecommendationCount ? `一键添加 ${addableRecommendationCount}` : "已全部加入"}
+                    </button>
+                  </div>
                 ) : null}
               </div>
 
               {result?.items.length ? (
                 <>
-                  <div className="hidden overflow-x-auto lg:block">
+                  <div
+                    aria-hidden
+                    className="hidden overflow-x-auto border-b border-line bg-background/70 lg:block"
+                    ref={recommendationTopScrollRef}
+                    onScroll={() => syncRecommendationTableScroll("top")}
+                  >
+                    <div className="h-3 min-w-[980px]" />
+                  </div>
+                  <div
+                    className="hidden overflow-x-auto lg:block"
+                    ref={recommendationTableScrollRef}
+                    onScroll={() => syncRecommendationTableScroll("table")}
+                  >
                     <table className="w-full min-w-[980px] border-collapse text-left text-sm">
                       <thead className="bg-background text-xs uppercase text-muted">
                         <tr>
@@ -1507,7 +1666,7 @@ export function CandidateProfileWorkspace() {
                           <th className="px-4 py-3 font-semibold">计划与历史</th>
                           <th className="px-4 py-3 font-semibold">风险标签</th>
                           <th className="px-4 py-3 font-semibold">推荐理由</th>
-                          <th className="px-4 py-3 font-semibold">操作</th>
+                          <th className="px-4 py-3 font-semibold">加入</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1517,10 +1676,15 @@ export function CandidateProfileWorkspace() {
 
                           return (
                             <tr
-                              className={`border-t border-line align-top ${
+                              className={`cursor-pointer border-t border-line align-top transition ${
                                 selected ? "bg-accent-soft/60" : "bg-white hover:bg-background"
                               }`}
                               key={getItemKey(item)}
+                              tabIndex={0}
+                              onClick={() => setSelectedKey(getItemKey(item))}
+                              onKeyDown={(event) =>
+                                handleKeyboardSelect(event, () => setSelectedKey(getItemKey(item)))
+                              }
                             >
                               <td className="px-4 py-4">
                                 <TierBadge tier={item.recommendation.tier} label={item.recommendation.tierLabel} />
@@ -1555,9 +1719,8 @@ export function CandidateProfileWorkspace() {
                                   {item.eligibility.eligibleMajorPlanCount} 个专业 /{" "}
                                   {formatNumber(item.eligibility.eligiblePlanCount)} 人
                                 </p>
-                                <p className="mt-1 text-xs text-muted">
-                                  近年最低位次{" "}
-                                  {formatNumber(item.eligibility.latestAdmission?.minRank)}
+                                <p className="mt-1 max-w-48 text-xs leading-5 text-muted">
+                                  近三年位次 {formatCompactHistoricalRanks(item)}
                                 </p>
                               </td>
                               <td className="px-4 py-4">
@@ -1573,26 +1736,27 @@ export function CandidateProfileWorkspace() {
                                 </p>
                               </td>
                               <td className="px-4 py-4">
-                                <div className="grid gap-2">
-                                  <button
-                                    className="inline-flex h-9 items-center justify-center gap-1 rounded border border-line px-3 text-xs font-semibold hover:border-accent hover:text-accent"
-                                    type="button"
-                                    onClick={() => setSelectedKey(getItemKey(item))}
-                                  >
-                                    查看
-                                    <ChevronRight aria-hidden className="h-4 w-4" />
-                                  </button>
-                                  <button
-                                    className="inline-flex h-9 items-center justify-center gap-1 rounded border border-line px-3 text-xs font-semibold hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-                                    disabled={itemInVolunteerPlan || (!itemInVolunteerPlan && volunteerPlanAnalysis.isFull)}
-                                    title={itemInVolunteerPlan ? "已加入志愿表" : "加入志愿表"}
-                                    type="button"
-                                    onClick={() => addToVolunteerPlan(item)}
-                                  >
+                                <button
+                                  aria-label={itemInVolunteerPlan ? "已加入志愿表" : "加入志愿表"}
+                                  className={`inline-flex h-9 w-9 items-center justify-center rounded border transition disabled:cursor-not-allowed ${
+                                    itemInVolunteerPlan
+                                      ? "border-success bg-success-soft text-success disabled:opacity-80"
+                                      : "border-line bg-white text-foreground hover:border-accent hover:text-accent disabled:opacity-50"
+                                  }`}
+                                  disabled={itemInVolunteerPlan || (!itemInVolunteerPlan && volunteerPlanAnalysis.isFull)}
+                                  title={itemInVolunteerPlan ? "已加入志愿表" : "加入志愿表"}
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    addToVolunteerPlan(item);
+                                  }}
+                                >
+                                  {itemInVolunteerPlan ? (
+                                    <Check aria-hidden className="h-4 w-4" />
+                                  ) : (
                                     <Plus aria-hidden className="h-4 w-4" />
-                                    {itemInVolunteerPlan ? "已加" : "加入"}
-                                  </button>
-                                </div>
+                                  )}
+                                </button>
                               </td>
                             </tr>
                           );
@@ -1624,7 +1788,13 @@ export function CandidateProfileWorkspace() {
               )}
             </div>
 
-            <RecommendationDetailPanel item={selectedItem} profile={result?.profile ?? null} />
+            <RecommendationDetailPanel
+              inVolunteerPlan={selectedItem ? volunteerPlanKeySet.has(getItemKey(selectedItem)) : false}
+              item={selectedItem}
+              planFull={volunteerPlanAnalysis.isFull}
+              profile={result?.profile ?? null}
+              onAdd={selectedItem ? () => addToVolunteerPlan(selectedItem) : undefined}
+            />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
