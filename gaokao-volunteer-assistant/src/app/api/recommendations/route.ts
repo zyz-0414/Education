@@ -10,6 +10,7 @@ const requestSchema = z.object({
   profile: candidateProfileSchema,
   requirePlan: z.boolean().default(true),
   includeHighRisk: z.boolean().default(false),
+  includeVerySafe: z.boolean().default(true),
   limit: z.coerce.number().int().min(1).max(100).default(45),
   offset: z.coerce.number().int().min(0).default(0),
 });
@@ -41,6 +42,7 @@ export async function POST(request: Request) {
     result = await getCollegeGroupRecommendations(parsed.data.profile, {
       requirePlan: parsed.data.requirePlan,
       includeHighRisk: parsed.data.includeHighRisk,
+      includeVerySafe: parsed.data.includeVerySafe,
       limit: parsed.data.limit,
       offset: parsed.data.offset,
     });

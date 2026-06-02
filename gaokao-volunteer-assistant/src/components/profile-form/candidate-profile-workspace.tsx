@@ -2,11 +2,14 @@
 
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   BadgeCheck,
   BarChart3,
   BookOpenCheck,
   ChevronRight,
   CircleAlert,
+  ClipboardList,
   Database,
   ExternalLink,
   Filter,
@@ -18,15 +21,27 @@ import {
   Loader2,
   MapPin,
   Medal,
+  Plus,
+  Save,
   Search,
   ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
   Table2,
+  Trash2,
   WalletCards,
   XCircle,
 } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+
+import {
+  analyzeVolunteerPlan,
+  canAddVolunteerPlanItem,
+  moveVolunteerPlanItem,
+  VOLUNTEER_PLAN_LIMIT,
+  type VolunteerPlanRatioTier,
+  type VolunteerPlanReference,
+} from "@/lib/volunteer-plan";
 
 type FirstChoiceSubject = "physics" | "history";
 type SecondChoiceSubject = "chemistry" | "biology" | "politics" | "geography";
@@ -160,6 +175,7 @@ type RecommendationResult = {
     lowConfidenceCount: number;
     tierCounts: Record<RecommendationTier | "unranked", number>;
     includeHighRisk: boolean;
+    includeVerySafe: boolean;
   };
   total: number;
   limit: number;
@@ -185,7 +201,10 @@ const riskOptions: Array<{ value: RiskPreference; label: string }> = [
   { value: "aggressive", label: "进取" },
 ];
 
-const tierOrder: RecommendationTier[] = ["reach", "match", "safe", "very_safe", "high_risk"];
+const tierOrder: RecommendationTier[] = ["high_risk", "reach", "match", "safe", "very_safe"];
+const volunteerRatioOrder: VolunteerPlanRatioTier[] = ["reach", "match", "safe", "very_safe"];
+const volunteerPlanStorageKey = "gaokao-volunteer-plan-v1";
+
 const tierLabels: Record<RecommendationTier, string> = {
   reach: "冲",
   match: "稳",
@@ -231,6 +250,28 @@ function getItemKey(item: RecommendationItem) {
   return `${item.key.year}-${item.key.subjectTrack}-${item.key.collegeCode}-${item.key.groupCode}`;
 }
 
+type StoredVolunteerPlanDraft = {
+  version: 1;
+  savedAt: string;
+  profile: RecommendationResult["profile"] | null;
+  items: RecommendationItem[];
+};
+
+function isStoredVolunteerPlanDraft(value: unknown): value is StoredVolunteerPlanDraft {
+  if (typeof value !== "object" || value === null) return false;
+
+  const draft = value as { items?: unknown; savedAt?: unknown };
+
+  return Array.isArray(draft.items) && typeof draft.savedAt === "string";
+}
+
+function toVolunteerPlanReference(item: RecommendationItem): VolunteerPlanReference {
+  return {
+    planKey: getItemKey(item),
+    tier: item.recommendation.tier,
+  };
+}
+
 function getDetailHref(item: RecommendationItem) {
   return `/api/college-groups/${item.key.year}/${item.key.subjectTrack}/${item.key.collegeCode}/${item.key.groupCode}`;
 }
@@ -265,6 +306,46 @@ function getRiskToneClass(tone: RiskTone) {
     default:
       return "border-line bg-background text-muted";
   }
+}
+
+function getVolunteerIssueClass(severity: "info" | "warning" | "danger") {
+  switch (severity) {
+    case "danger":
+      return "border-danger bg-danger-soft text-danger";
+    case "warning":
+      return "border-warning bg-warning-soft text-warning";
+    default:
+      return "border-info bg-info-soft text-info";
+  }
+}
+
+function getVolunteerRatioClass(
+  tier: VolunteerPlanRatioTier,
+  count: number,
+  total: number,
+  range: { min: number; max: number },
+) {
+  if (count >= range.min && count <= range.max) {
+    return "bg-accent";
+  }
+
+  if (count > range.max || (total > 0 && (tier === "safe" || tier === "very_safe") && count < range.min)) {
+    return "bg-warning";
+  }
+
+  return "bg-muted";
+}
+
+function formatSavedTime(value: string | null) {
+  if (!value) return "未保存";
+
+  return new Date(value).toLocaleString("zh-CN", {
+    hour12: false,
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function getRiskPills(item: RecommendationItem): Array<{ label: string; tone: RiskTone }> {
@@ -341,11 +422,17 @@ function MetricBlock({
 function RecommendationCard({
   item,
   selected,
+  inVolunteerPlan,
+  planFull,
   onSelect,
+  onAdd,
 }: {
   item: RecommendationItem;
   selected: boolean;
+  inVolunteerPlan: boolean;
+  planFull: boolean;
   onSelect: () => void;
+  onAdd: () => void;
 }) {
   return (
     <article className={`rounded-lg border bg-white p-4 shadow-sm ${selected ? "border-accent" : "border-line"}`}>
@@ -358,14 +445,26 @@ function RecommendationCard({
             {item.eligibility.requirement}
           </p>
         </div>
-        <button
-          className="inline-flex h-9 shrink-0 items-center gap-1 rounded border border-line px-3 text-xs font-semibold text-foreground hover:border-accent hover:text-accent"
-          type="button"
-          onClick={onSelect}
-        >
-          详情
-          <ChevronRight aria-hidden className="h-4 w-4" />
-        </button>
+        <div className="grid shrink-0 gap-2">
+          <button
+            className="inline-flex h-9 items-center gap-1 rounded border border-line px-3 text-xs font-semibold text-foreground hover:border-accent hover:text-accent"
+            type="button"
+            onClick={onSelect}
+          >
+            详情
+            <ChevronRight aria-hidden className="h-4 w-4" />
+          </button>
+          <button
+            className="inline-flex h-9 items-center gap-1 rounded border border-line px-3 text-xs font-semibold text-foreground hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={inVolunteerPlan || (!inVolunteerPlan && planFull)}
+            title={inVolunteerPlan ? "已加入志愿表" : "加入志愿表"}
+            type="button"
+            onClick={onAdd}
+          >
+            <Plus aria-hidden className="h-4 w-4" />
+            {inVolunteerPlan ? "已加" : "加入"}
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
@@ -403,7 +502,7 @@ function RecommendationDetailPanel({
 }) {
   if (!item) {
     return (
-      <aside className="rounded-lg border border-dashed border-line bg-panel p-6 text-sm text-muted xl:sticky xl:top-5 xl:self-start">
+      <aside className="rounded-lg border border-dashed border-line bg-panel p-6 text-sm text-muted xl:sticky xl:top-5 xl:max-h-[calc(100vh-2.5rem)] xl:self-start xl:overflow-y-auto xl:[scrollbar-gutter:stable]">
         <Info aria-hidden className="mb-3 h-5 w-5 text-accent" />
         选择一条推荐后查看院校专业组详情、风险标签和推荐理由。
       </aside>
@@ -414,7 +513,7 @@ function RecommendationDetailPanel({
   const detailHref = getDetailHref(item);
 
   return (
-    <aside className="rounded-lg border border-line bg-panel p-5 shadow-sm xl:sticky xl:top-5 xl:self-start">
+    <aside className="rounded-lg border border-line bg-panel p-5 shadow-sm xl:sticky xl:top-5 xl:max-h-[calc(100vh-2.5rem)] xl:self-start xl:overflow-y-auto xl:[scrollbar-gutter:stable]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <TierBadge tier={item.recommendation.tier} label={item.recommendation.tierLabel} />
@@ -552,6 +651,267 @@ function RecommendationDetailPanel({
   );
 }
 
+type VolunteerPlanAnalysis = ReturnType<typeof analyzeVolunteerPlan>;
+
+function VolunteerPlanEditor({
+  items,
+  analysis,
+  profile,
+  savedAt,
+  message,
+  onMove,
+  onRemove,
+  onSave,
+  onClear,
+}: {
+  items: RecommendationItem[];
+  analysis: VolunteerPlanAnalysis;
+  profile: RecommendationResult["profile"] | null;
+  savedAt: string | null;
+  message: string | null;
+  onMove: (index: number, direction: "up" | "down") => void;
+  onRemove: (item: RecommendationItem) => void;
+  onSave: () => void;
+  onClear: () => void;
+}) {
+  const leadIssue =
+    analysis.issues.find((issue) => issue.severity === "danger") ??
+    analysis.issues.find((issue) => issue.severity === "warning") ??
+    analysis.issues[0];
+
+  return (
+    <section className="rounded-lg border border-line bg-panel shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line p-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <ClipboardList aria-hidden className="h-5 w-5 text-accent" />
+            <h2 className="text-lg font-semibold">志愿表编辑器</h2>
+          </div>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            {profile
+              ? `${profile.targetYear} · ${getSubjectTrackLabel(profile.firstChoiceSubject)} · ${formatNumber(
+                  profile.rank,
+                )} 位次`
+              : "尚未绑定考生画像"}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded border border-line bg-background px-3 py-1 text-sm font-semibold">
+            {analysis.total}/{analysis.limit}
+          </span>
+          <button
+            className="inline-flex h-9 items-center gap-2 rounded border border-line px-3 text-xs font-semibold text-foreground hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!items.length}
+            title="保存方案"
+            type="button"
+            onClick={onSave}
+          >
+            <Save aria-hidden className="h-4 w-4" />
+            保存
+          </button>
+          <button
+            className="inline-flex h-9 items-center gap-2 rounded border border-line px-3 text-xs font-semibold text-muted hover:border-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!items.length}
+            title="清空志愿表"
+            type="button"
+            onClick={onClear}
+          >
+            <Trash2 aria-hidden className="h-4 w-4" />
+            清空
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 p-4">
+        <div className="grid gap-3 text-sm sm:grid-cols-3">
+          <div className="rounded border border-line bg-background p-3">
+            <p className="text-muted">剩余名额</p>
+            <p className="mt-1 text-xl font-semibold">{analysis.remaining}</p>
+          </div>
+          <div className="rounded border border-line bg-background p-3">
+            <p className="text-muted">保底数量</p>
+            <p className="mt-1 text-xl font-semibold">{analysis.safetyCount}</p>
+          </div>
+          <div className="rounded border border-line bg-background p-3">
+            <p className="text-muted">保存状态</p>
+            <p className="mt-1 text-xl font-semibold">{formatSavedTime(savedAt)}</p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-4">
+          {volunteerRatioOrder.map((tier) => {
+            const range = analysis.suggestedRanges[tier];
+            const count = analysis.tierCounts[tier];
+            const width = Math.min((count / range.max) * 100, 100);
+
+            return (
+              <div className="rounded border border-line bg-background p-3" key={tier}>
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className="font-semibold">{tierLabels[tier]}</span>
+                  <span className="text-muted">
+                    {count}/{range.min}-{range.max}
+                  </span>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded bg-line">
+                  <div
+                    className={`h-full rounded ${getVolunteerRatioClass(tier, count, analysis.total, range)}`}
+                    style={{ width: `${width}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {leadIssue || message ? (
+          <div className="grid gap-2">
+            {leadIssue ? (
+              <div className={`flex gap-3 rounded border p-3 text-sm ${getVolunteerIssueClass(leadIssue.severity)}`}>
+                <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{leadIssue.message}</span>
+              </div>
+            ) : null}
+            {message ? (
+              <div className="rounded border border-line bg-background px-3 py-2 text-sm text-muted">{message}</div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {items.length ? (
+          <>
+            <div className="hidden overflow-x-auto lg:block">
+              <table className="w-full min-w-[860px] border-collapse text-left text-sm">
+                <thead className="bg-background text-xs uppercase text-muted">
+                  <tr>
+                    <th className="px-3 py-3 font-semibold">序号</th>
+                    <th className="px-3 py-3 font-semibold">档位</th>
+                    <th className="px-3 py-3 font-semibold">院校专业组</th>
+                    <th className="px-3 py-3 font-semibold">参考信息</th>
+                    <th className="px-3 py-3 font-semibold">排序</th>
+                    <th className="px-3 py-3 font-semibold">删除</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item, index) => (
+                    <tr className="border-t border-line bg-white align-top" key={getItemKey(item)}>
+                      <td className="px-3 py-3 font-semibold text-muted">{index + 1}</td>
+                      <td className="px-3 py-3">
+                        <TierBadge tier={item.recommendation.tier} label={item.recommendation.tierLabel} />
+                      </td>
+                      <td className="px-3 py-3">
+                        <p className="font-semibold">{item.college.collegeName}</p>
+                        <p className="mt-1 text-xs text-muted">
+                          {item.key.collegeCode}-{item.key.groupCode} · {item.college.city ?? "城市待补"} ·{" "}
+                          {item.eligibility.requirement}
+                        </p>
+                      </td>
+                      <td className="px-3 py-3 text-xs leading-5 text-muted">
+                        <p>参考位次 {formatNumber(item.recommendation.referenceRank)}</p>
+                        <p>计划 {formatNumber(item.eligibility.eligiblePlanCount)} 人</p>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex gap-1">
+                          <button
+                            aria-label="上移"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded border border-line text-muted hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                            disabled={index === 0}
+                            title="上移"
+                            type="button"
+                            onClick={() => onMove(index, "up")}
+                          >
+                            <ArrowUp aria-hidden className="h-4 w-4" />
+                          </button>
+                          <button
+                            aria-label="下移"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded border border-line text-muted hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                            disabled={index === items.length - 1}
+                            title="下移"
+                            type="button"
+                            onClick={() => onMove(index, "down")}
+                          >
+                            <ArrowDown aria-hidden className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <button
+                          aria-label="删除志愿"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded border border-line text-muted hover:border-danger hover:text-danger"
+                          title="删除"
+                          type="button"
+                          onClick={() => onRemove(item)}
+                        >
+                          <Trash2 aria-hidden className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="grid gap-3 lg:hidden">
+              {items.map((item, index) => (
+                <article className="rounded border border-line bg-background p-3" key={getItemKey(item)}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-muted">#{index + 1}</p>
+                      <h3 className="mt-1 truncate text-sm font-semibold">{item.college.collegeName}</h3>
+                      <p className="mt-1 text-xs text-muted">
+                        {item.key.collegeCode}-{item.key.groupCode} · {item.eligibility.requirement}
+                      </p>
+                    </div>
+                    <TierBadge tier={item.recommendation.tier} label={item.recommendation.tierLabel} />
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted">
+                    <span>参考 {formatNumber(item.recommendation.referenceRank)}</span>
+                    <span>计划 {formatNumber(item.eligibility.eligiblePlanCount)} 人</span>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      aria-label="上移"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded border border-line text-muted hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={index === 0}
+                      title="上移"
+                      type="button"
+                      onClick={() => onMove(index, "up")}
+                    >
+                      <ArrowUp aria-hidden className="h-4 w-4" />
+                    </button>
+                    <button
+                      aria-label="下移"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded border border-line text-muted hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={index === items.length - 1}
+                      title="下移"
+                      type="button"
+                      onClick={() => onMove(index, "down")}
+                    >
+                      <ArrowDown aria-hidden className="h-4 w-4" />
+                    </button>
+                    <button
+                      aria-label="删除志愿"
+                      className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded border border-line text-muted hover:border-danger hover:text-danger"
+                      title="删除"
+                      type="button"
+                      onClick={() => onRemove(item)}
+                    >
+                      <Trash2 aria-hidden className="h-4 w-4" />
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="rounded border border-dashed border-line bg-background p-8 text-center text-sm text-muted">
+            生成推荐后，从院校专业组列表加入志愿。
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function CandidateProfileWorkspace() {
   const [targetYear, setTargetYear] = useState(2025);
   const [firstChoiceSubject, setFirstChoiceSubject] = useState<FirstChoiceSubject>("physics");
@@ -564,14 +924,39 @@ export function CandidateProfileWorkspace() {
   const [riskPreference, setRiskPreference] = useState<RiskPreference>("balanced");
   const [requirePlan, setRequirePlan] = useState(true);
   const [includeHighRisk, setIncludeHighRisk] = useState(false);
+  const [includeVerySafe, setIncludeVerySafe] = useState(true);
   const [tuitionLimit, setTuitionLimit] = useState("");
   const [preferredCities, setPreferredCities] = useState("合肥 南京");
   const [preferredMajorCategories, setPreferredMajorCategories] = useState("计算机 软件 数据");
   const [rejectedMajorCategories, setRejectedMajorCategories] = useState("护理 土木");
   const [result, setResult] = useState<RecommendationResult | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [volunteerPlanItems, setVolunteerPlanItems] = useState<RecommendationItem[]>([]);
+  const [volunteerPlanProfile, setVolunteerPlanProfile] = useState<RecommendationResult["profile"] | null>(null);
+  const [volunteerPlanSavedAt, setVolunteerPlanSavedAt] = useState<string | null>(null);
+  const [volunteerPlanMessage, setVolunteerPlanMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      try {
+        const rawDraft = window.localStorage.getItem(volunteerPlanStorageKey);
+        if (!rawDraft) return;
+
+        const draft: unknown = JSON.parse(rawDraft);
+        if (!isStoredVolunteerPlanDraft(draft)) return;
+
+        setVolunteerPlanItems(draft.items.slice(0, VOLUNTEER_PLAN_LIMIT));
+        setVolunteerPlanProfile(draft.profile ?? null);
+        setVolunteerPlanSavedAt(draft.savedAt);
+      } catch {
+        setVolunteerPlanMessage("已保存方案读取失败，可重新保存当前方案");
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   const selectedSecondChoiceLabels = useMemo(
     () =>
@@ -583,9 +968,21 @@ export function CandidateProfileWorkspace() {
   );
 
   const selectedItem = useMemo(() => {
-    if (!result?.items.length) return null;
-    return result.items.find((item) => getItemKey(item) === selectedKey) ?? result.items[0];
-  }, [result, selectedKey]);
+    const items = [...(result?.items ?? []), ...volunteerPlanItems];
+    if (!items.length) return null;
+
+    return items.find((item) => getItemKey(item) === selectedKey) ?? result?.items[0] ?? volunteerPlanItems[0];
+  }, [result, selectedKey, volunteerPlanItems]);
+
+  const volunteerPlanKeySet = useMemo(
+    () => new Set(volunteerPlanItems.map((item) => getItemKey(item))),
+    [volunteerPlanItems],
+  );
+
+  const volunteerPlanAnalysis = useMemo(
+    () => analyzeVolunteerPlan(volunteerPlanItems.map(toVolunteerPlanReference)),
+    [volunteerPlanItems],
+  );
 
   const tierCountTotal = useMemo(() => {
     if (!result) return 0;
@@ -606,6 +1003,72 @@ export function CandidateProfileWorkspace() {
     });
   }
 
+  function markVolunteerPlanDirty() {
+    setVolunteerPlanSavedAt(null);
+  }
+
+  function addToVolunteerPlan(item: RecommendationItem) {
+    const decision = canAddVolunteerPlanItem(
+      volunteerPlanItems.map(toVolunteerPlanReference),
+      toVolunteerPlanReference(item),
+    );
+
+    if (!decision.ok) {
+      setVolunteerPlanMessage(decision.reason);
+      return;
+    }
+
+    setVolunteerPlanItems((current) => [...current, item]);
+    setVolunteerPlanProfile(result?.profile ?? volunteerPlanProfile);
+    setSelectedKey(getItemKey(item));
+    setVolunteerPlanMessage(`${item.college.collegeName} 已加入志愿表`);
+    markVolunteerPlanDirty();
+  }
+
+  function removeFromVolunteerPlan(item: RecommendationItem) {
+    setVolunteerPlanItems((current) => current.filter((currentItem) => getItemKey(currentItem) !== getItemKey(item)));
+    setVolunteerPlanMessage(`${item.college.collegeName} 已从志愿表删除`);
+    markVolunteerPlanDirty();
+  }
+
+  function moveVolunteerPlan(index: number, direction: "up" | "down") {
+    setVolunteerPlanItems((current) => moveVolunteerPlanItem(current, index, direction));
+    setVolunteerPlanMessage("志愿顺序已更新");
+    markVolunteerPlanDirty();
+  }
+
+  function saveVolunteerPlan() {
+    if (!volunteerPlanItems.length) {
+      setVolunteerPlanMessage("志愿表为空，暂不保存");
+      return;
+    }
+
+    const savedAt = new Date().toISOString();
+    const draft: StoredVolunteerPlanDraft = {
+      version: 1,
+      savedAt,
+      profile: volunteerPlanProfile ?? result?.profile ?? null,
+      items: volunteerPlanItems,
+    };
+
+    try {
+      window.localStorage.setItem(volunteerPlanStorageKey, JSON.stringify(draft));
+      setVolunteerPlanSavedAt(savedAt);
+      setVolunteerPlanProfile(draft.profile);
+      setVolunteerPlanMessage("方案已保存到本机浏览器");
+    } catch {
+      setVolunteerPlanMessage("方案保存失败，请减少条目后重试");
+    }
+  }
+
+  function clearVolunteerPlan() {
+    setVolunteerPlanItems([]);
+    setVolunteerPlanProfile(null);
+    setVolunteerPlanSavedAt(null);
+    setVolunteerPlanMessage("志愿表已清空");
+    window.localStorage.removeItem(volunteerPlanStorageKey);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsPending(true);
@@ -620,6 +1083,7 @@ export function CandidateProfileWorkspace() {
         body: JSON.stringify({
           requirePlan,
           includeHighRisk,
+          includeVerySafe,
           limit: 45,
           offset: 0,
           profile: {
@@ -663,12 +1127,12 @@ export function CandidateProfileWorkspace() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto grid w-full max-w-[1500px] gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[380px_minmax(0,1fr)] lg:px-8">
-        <section className="rounded-lg border border-line bg-panel p-5 shadow-sm lg:sticky lg:top-5 lg:self-start">
+        <section className="rounded-lg border border-line bg-panel p-5 shadow-sm lg:sticky lg:top-5 lg:max-h-[calc(100vh-2.5rem)] lg:self-start lg:overflow-y-auto lg:[scrollbar-gutter:stable]">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-accent">第 6 周</p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-normal">推荐结果解释工作台</h1>
-              <p className="mt-2 text-sm leading-6 text-muted">安徽普通类本科批 · 院校专业组推荐</p>
+              <p className="text-sm font-semibold text-accent">第 7 周</p>
+              <h1 className="mt-2 text-2xl font-semibold tracking-normal">推荐与志愿表工作台</h1>
+              <p className="mt-2 text-sm leading-6 text-muted">安徽普通类本科批 · 院校专业组方案</p>
             </div>
             <ShieldCheck aria-hidden className="h-6 w-6 text-accent" />
           </div>
@@ -835,7 +1299,7 @@ export function CandidateProfileWorkspace() {
               <label className="flex items-center justify-between gap-4 rounded border border-line bg-background px-3 py-3 text-sm font-medium">
                 <span className="flex items-center gap-2">
                   <ShieldAlert aria-hidden className="h-4 w-4 text-warning" />
-                  显示高危项
+                  高危冲刺
                 </span>
                 <input
                   checked={includeHighRisk}
@@ -845,7 +1309,22 @@ export function CandidateProfileWorkspace() {
                 />
               </label>
               <p className="text-xs leading-5 text-muted">
-                默认隐藏位次差距过大的高危项；打开后仅用于风险排查。
+                默认不纳入高危项；打开后会预留少量冲高志愿。
+              </p>
+              <label className="flex items-center justify-between gap-4 rounded border border-line bg-background px-3 py-3 text-sm font-medium">
+                <span className="flex items-center gap-2">
+                  <ShieldCheck aria-hidden className="h-4 w-4 text-success" />
+                  过保兜底
+                </span>
+                <input
+                  checked={includeVerySafe}
+                  className="h-5 w-5 accent-[var(--accent)]"
+                  type="checkbox"
+                  onChange={(event) => setIncludeVerySafe(event.target.checked)}
+                />
+              </label>
+              <p className="text-xs leading-5 text-muted">
+                打开时保留少量兜底项；关闭后优先用保档补足名额。
               </p>
             </div>
 
@@ -873,10 +1352,10 @@ export function CandidateProfileWorkspace() {
           <div className="rounded-lg border border-line bg-panel p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold text-accent">推荐结果页</p>
-                <h2 className="mt-2 text-2xl font-semibold">用户能看懂的冲稳保推荐</h2>
+                <p className="text-sm font-semibold text-accent">第 7 周工作台</p>
+                <h2 className="mt-2 text-2xl font-semibold">生成推荐并整理志愿表</h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-                  展示院校专业组分档、参考位次、风险标签、推荐理由和详情入口；桌面端用表格快速比较，手机端用卡片逐条阅读。
+                  展示院校专业组分档、参考位次、风险标签和推荐理由；推荐项可加入志愿表，并在表内删除、排序、保存。
                 </p>
               </div>
               {result ? (
@@ -924,6 +1403,18 @@ export function CandidateProfileWorkspace() {
               </div>
             </div>
           ) : null}
+
+          <VolunteerPlanEditor
+            analysis={volunteerPlanAnalysis}
+            items={volunteerPlanItems}
+            message={volunteerPlanMessage}
+            profile={volunteerPlanProfile ?? result?.profile ?? null}
+            savedAt={volunteerPlanSavedAt}
+            onClear={clearVolunteerPlan}
+            onMove={moveVolunteerPlan}
+            onRemove={removeFromVolunteerPlan}
+            onSave={saveVolunteerPlan}
+          />
 
           {error ? (
             <div className="flex items-center gap-3 rounded border border-danger bg-danger-soft p-4 text-sm text-danger">
@@ -1016,12 +1507,13 @@ export function CandidateProfileWorkspace() {
                           <th className="px-4 py-3 font-semibold">计划与历史</th>
                           <th className="px-4 py-3 font-semibold">风险标签</th>
                           <th className="px-4 py-3 font-semibold">推荐理由</th>
-                          <th className="px-4 py-3 font-semibold">详情</th>
+                          <th className="px-4 py-3 font-semibold">操作</th>
                         </tr>
                       </thead>
                       <tbody>
                         {result.items.map((item) => {
                           const selected = selectedItem ? getItemKey(item) === getItemKey(selectedItem) : false;
+                          const itemInVolunteerPlan = volunteerPlanKeySet.has(getItemKey(item));
 
                           return (
                             <tr
@@ -1081,14 +1573,26 @@ export function CandidateProfileWorkspace() {
                                 </p>
                               </td>
                               <td className="px-4 py-4">
-                                <button
-                                  className="inline-flex h-9 items-center gap-1 rounded border border-line px-3 text-xs font-semibold hover:border-accent hover:text-accent"
-                                  type="button"
-                                  onClick={() => setSelectedKey(getItemKey(item))}
-                                >
-                                  查看
-                                  <ChevronRight aria-hidden className="h-4 w-4" />
-                                </button>
+                                <div className="grid gap-2">
+                                  <button
+                                    className="inline-flex h-9 items-center justify-center gap-1 rounded border border-line px-3 text-xs font-semibold hover:border-accent hover:text-accent"
+                                    type="button"
+                                    onClick={() => setSelectedKey(getItemKey(item))}
+                                  >
+                                    查看
+                                    <ChevronRight aria-hidden className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    className="inline-flex h-9 items-center justify-center gap-1 rounded border border-line px-3 text-xs font-semibold hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                                    disabled={itemInVolunteerPlan || (!itemInVolunteerPlan && volunteerPlanAnalysis.isFull)}
+                                    title={itemInVolunteerPlan ? "已加入志愿表" : "加入志愿表"}
+                                    type="button"
+                                    onClick={() => addToVolunteerPlan(item)}
+                                  >
+                                    <Plus aria-hidden className="h-4 w-4" />
+                                    {itemInVolunteerPlan ? "已加" : "加入"}
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -1100,9 +1604,12 @@ export function CandidateProfileWorkspace() {
                   <div className="grid gap-3 p-4 lg:hidden">
                     {result.items.map((item) => (
                       <RecommendationCard
+                        inVolunteerPlan={volunteerPlanKeySet.has(getItemKey(item))}
                         item={item}
                         key={getItemKey(item)}
+                        planFull={volunteerPlanAnalysis.isFull}
                         selected={selectedItem ? getItemKey(item) === getItemKey(selectedItem) : false}
+                        onAdd={() => addToVolunteerPlan(item)}
                         onSelect={() => setSelectedKey(getItemKey(item))}
                       />
                     ))}

@@ -57,7 +57,7 @@ npm run dev
 
 1. 安徽 2024、2025 一分一段表；
 2. 安徽 2024、2025 普通本科批投档/录取数据；
-3. 安徽 2025 招生计划样例，2026 发布后补充正式招生计划；
+3. 安徽 2024、2025 普通本科批招生计划，2026 发布后补充当年正式招生计划；
 4. 院校专业组、专业列表、选科要求、学费、校区；
 5. 招生章程中的语种、体检、单科、调剂、中外合作等风险规则。
 
@@ -77,16 +77,21 @@ python -m pip install -r data/requirements.txt
 npm run data:prepare
 npm run data:check
 npm run data:validate
+npm run verify:data
 npm run data:import
 npm run verify:week4
 npm run verify:week5
 npm run test:week6
 npm run verify:week6
+npm run test:week7
+npm run verify:week7
 ```
+
+`npm run data:prepare` 当前默认从 `D:\education\data` 读取已收集的安徽 Excel，生成 2024-2025 专业组口径 cleaned CSV；旧的官方样例/OCR 准备脚本保留为 `npm run data:prepare:legacy`。详见 `docs/collected-anhui-data-import.md`。
 
 ## 当前状态
 
-第 0 周准备已完成基础骨架。第 1-2 周已完成安徽首批数据整理：2024、2025 一分一段完整清洗，2024、2025 普通本科批投档官方长图留存并生成首批 OCR 样例，2025 招生计划样例已结构化。第 3 周已补齐 Prisma 迁移、数据导入命令、CSV 完整性校验和院校专业组基础查询 API。第 4 周已完成考生建档工作台、选科组合校验、分数位次校验、普通本科批过滤和选科不符过滤。第 5 周已完成推荐算法和推荐接口。第 6 周已完成推荐结果页、桌面表格、手机卡片、风险标签、推荐理由和院校专业组详情入口，并完成院校代码跨年复用数据审计、名称快照隔离、搜索修正和高危项默认隐藏。
+第 0 周准备已完成基础骨架。第 1-2 周已完成安徽首批数据整理。当前 cleaned CSV 已升级为 2024、2025 专业组口径收集版数据，包含 47,401 条招生计划和 8,723 条专业组投档结果；2017-2023 旧文理科口径数据暂不混入推荐模型。第 3 周已补齐 Prisma 迁移、数据导入命令、CSV 完整性校验和院校专业组基础查询 API。第 4 周已完成考生建档工作台、选科组合校验、分数位次校验、普通本科批过滤和选科不符过滤。第 5 周已完成推荐算法和推荐接口。第 6 周已完成推荐结果页、桌面表格、手机卡片、风险标签、推荐理由和院校专业组详情入口，并完成院校代码跨年复用数据审计、名称快照隔离、搜索修正和高危项默认隐藏。第 7 周已完成志愿表编辑器、加入/删除、上移/下移排序、45 个志愿限制、冲稳保比例提示和本地方案保存。
 
 ## 第 3 周数据库与查询
 
@@ -130,6 +135,15 @@ npm run verify:week6
 - `POST /api/recommendations`
 
 详见 `docs/week5-recommendation-algorithm.md`、`docs/week6-recommendation-results.md` 和 `docs/week6-data-audit.md`。
+
+## 第 7 周志愿表
+
+```bash
+npm run test:week7
+npm run verify:week7
+```
+
+首页工作台可以把推荐院校专业组加入志愿表，支持删除、上移/下移、45 个志愿限制、冲稳保比例提示和浏览器本地方案保存。详见 `docs/week7-volunteer-plan-editor.md`。
 
 ## 第 0-4 周本地数据库收口
 

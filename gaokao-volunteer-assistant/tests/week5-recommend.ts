@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import { calculatePreferenceScore } from "@/lib/recommend/preference-score";
 import { calculateReferenceRank } from "@/lib/recommend/rank-model";
-import { getTierByRankGapRatio } from "@/lib/recommend/tier";
+import { getTierByRankGap, getTierByRankGapRatio } from "@/lib/recommend/tier";
 import { candidateProfileSchema } from "@/lib/validators/profile";
 
 const profile = candidateProfileSchema.parse({
@@ -42,7 +42,14 @@ assert.equal(getTierByRankGapRatio(0.05), "reach");
 assert.equal(getTierByRankGapRatio(-0.08), "match");
 assert.equal(getTierByRankGapRatio(-0.2), "safe");
 assert.equal(getTierByRankGapRatio(-0.31), "very_safe");
-assert.equal(getTierByRankGapRatio(0.12), "high_risk");
+assert.equal(getTierByRankGapRatio(0.12), "reach");
+assert.equal(getTierByRankGapRatio(0.121), "high_risk");
+assert.equal(getTierByRankGap(1450 - 1216, 1216), "reach");
+assert.equal(getTierByRankGap(1450 - 1000, 1000), "high_risk");
+assert.equal(getTierByRankGap(7000 - 6000, 6000), "reach");
+assert.equal(getTierByRankGap(7000 - 5900, 5900), "high_risk");
+assert.equal(getTierByRankGap(1450 - 3070, 3070), "safe");
+assert.equal(getTierByRankGap(1450 - 23648, 23648), "very_safe");
 
 const matchedPreference = calculatePreferenceScore(profile, {
   tier: "match",

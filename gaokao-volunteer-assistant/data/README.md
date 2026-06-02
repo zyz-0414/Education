@@ -28,6 +28,17 @@ npm run data:check
 `prepare_week1_2_data.py` 会从已留存的官方 PDF、官方投档长图和招生计划样例页面生成 cleaned CSV。投档长图当前只做首批 OCR 样例抽取，完整 OCR 与人工复核需后续继续推进。
 OCR 过程会在 `tmp/ocr/` 生成缓存文件，该目录不属于可追溯原始数据。
 
+## 收集版数据命令
+
+```bash
+python -m pip install -r data/requirements.txt
+npm run data:prepare
+npm run verify:data
+npm run data:import
+```
+
+`data:prepare` 当前默认运行 `prepare_collected_anhui_data.py`，从 `D:\education\data` 读取 2024-2025 安徽专业组口径 Excel 并覆盖 cleaned CSV。旧的首批样例/OCR 脚本保留为 `npm run data:prepare:legacy`。2017-2023 旧文理科口径数据暂不混入专业组推荐模型。
+
 ## 第 3 周入库命令
 
 ```bash

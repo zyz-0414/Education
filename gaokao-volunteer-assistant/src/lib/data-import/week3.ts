@@ -122,6 +122,16 @@ type CharterRuleRow = {
 
 export type ImportSummary = Record<string, number>;
 
+const CREATE_MANY_BATCH_SIZE = 1_000;
+
+function chunkRows<T>(rows: T[], size = CREATE_MANY_BATCH_SIZE): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < rows.length; index += size) {
+    chunks.push(rows.slice(index, index + size));
+  }
+  return chunks;
+}
+
 function uniqueRows<T>(rows: T[], getKey: (row: T) => string): T[] {
   const seen = new Map<string, T>();
   for (const row of rows) {
@@ -222,230 +232,6 @@ async function upsertPolicies(tx: Prisma.TransactionClient) {
   return years.length;
 }
 
-async function upsertScoreSegments(tx: Prisma.TransactionClient) {
-  const rows = await readCsvRows<ScoreSegmentRow>(cleanedCsvPaths.scoreSegments);
-
-  for (const row of rows) {
-    const year = requiredInt(row.year, "year");
-    const provinceCode = requiredString(row.province_code, "province_code");
-    const subjectTrack = requiredString(row.subject_track, "subject_track");
-    const score = requiredInt(row.score, "score");
-
-    await tx.scoreSegment.upsert({
-      where: {
-        year_provinceCode_subjectTrack_score: {
-          year,
-          provinceCode,
-          subjectTrack,
-          score,
-        },
-      },
-      create: {
-        year,
-        provinceCode,
-        subjectTrack,
-        score,
-        count: requiredInt(row.count, "count"),
-        cumulativeCount: requiredInt(row.cumulative_count, "cumulative_count"),
-        rankMin: optionalInt(row.rank_min),
-        rankMax: optionalInt(row.rank_max),
-        sourceId: requiredString(row.source_id, "source_id"),
-      },
-      update: {
-        count: requiredInt(row.count, "count"),
-        cumulativeCount: requiredInt(row.cumulative_count, "cumulative_count"),
-        rankMin: optionalInt(row.rank_min),
-        rankMax: optionalInt(row.rank_max),
-        sourceId: requiredString(row.source_id, "source_id"),
-      },
-    });
-  }
-
-  return rows.length;
-}
-
-async function upsertColleges(tx: Prisma.TransactionClient) {
-  const rows = await readCsvRows<CollegeRow>(cleanedCsvPaths.colleges);
-  const unique = uniqueRows(rows, (row) => requiredString(row.college_code, "college_code"));
-
-  for (const row of unique) {
-    const collegeCode = requiredString(row.college_code, "college_code");
-    await tx.college.upsert({
-      where: { collegeCode },
-      create: {
-        collegeCode,
-        collegeName: requiredString(row.college_name, "college_name"),
-        province: optionalString(row.province),
-        city: optionalString(row.city),
-        level: optionalString(row.level),
-        ownership: optionalString(row.ownership),
-        tags: toJsonObject(optionalJson(row.tags)),
-        officialSite: optionalString(row.official_site),
-        sourceId: optionalString(row.source_id),
-      },
-      update: {
-        collegeName: requiredString(row.college_name, "college_name"),
-        province: optionalString(row.province),
-        city: optionalString(row.city),
-        level: optionalString(row.level),
-        ownership: optionalString(row.ownership),
-        tags: toJsonObject(optionalJson(row.tags)),
-        officialSite: optionalString(row.official_site),
-        sourceId: optionalString(row.source_id),
-      },
-    });
-  }
-
-  return unique.length;
-}
-
-async function upsertMajors(tx: Prisma.TransactionClient) {
-  const rows = await readCsvRows<MajorRow>(cleanedCsvPaths.majors);
-  const unique = uniqueRows(rows, (row) =>
-    [
-      requiredString(row.major_code, "major_code"),
-      requiredString(row.major_name, "major_name"),
-      requiredString(row.source_id, "source_id"),
-    ].join("|"),
-  );
-
-  for (const row of unique) {
-    const majorCode = requiredString(row.major_code, "major_code");
-    const majorName = requiredString(row.major_name, "major_name");
-    const sourceId = requiredString(row.source_id, "source_id");
-
-    await tx.major.upsert({
-      where: {
-        majorCode_majorName_sourceId: {
-          majorCode,
-          majorName,
-          sourceId,
-        },
-      },
-      create: {
-        majorCode,
-        majorName,
-        majorCategory: optionalString(row.major_category),
-        degreeCategory: optionalString(row.degree_category),
-        duration: optionalString(row.duration),
-        notes: optionalString(row.notes),
-        sourceId,
-      },
-      update: {
-        majorCategory: optionalString(row.major_category),
-        degreeCategory: optionalString(row.degree_category),
-        duration: optionalString(row.duration),
-        notes: optionalString(row.notes),
-      },
-    });
-  }
-
-  return unique.length;
-}
-
-async function upsertCollegeGroups(tx: Prisma.TransactionClient) {
-  const rows = await readCsvRows<CollegeGroupRow>(cleanedCsvPaths.collegeGroups);
-
-  for (const row of rows) {
-    const year = requiredInt(row.year, "year");
-    const provinceCode = requiredString(row.province_code, "province_code");
-    const batchCode = requiredString(row.batch_code, "batch_code");
-    const subjectTrack = requiredString(row.subject_track, "subject_track");
-    const collegeCode = requiredString(row.college_code, "college_code");
-    const groupCode = requiredString(row.group_code, "group_code");
-
-    await tx.collegeGroup.upsert({
-      where: {
-        year_provinceCode_batchCode_subjectTrack_collegeCode_groupCode: {
-          year,
-          provinceCode,
-          batchCode,
-          subjectTrack,
-          collegeCode,
-          groupCode,
-        },
-      },
-      create: {
-        year,
-        provinceCode,
-        batchCode,
-        subjectTrack,
-        collegeCode,
-        groupCode,
-        collegeNameSnapshot: optionalString(row.college_name),
-        subjectRequirement: requiredString(row.subject_requirement, "subject_requirement"),
-        groupNote: optionalString(row.group_note),
-        sourceId: requiredString(row.source_id, "source_id"),
-      },
-      update: {
-        collegeNameSnapshot: optionalString(row.college_name),
-        subjectRequirement: requiredString(row.subject_requirement, "subject_requirement"),
-        groupNote: optionalString(row.group_note),
-        sourceId: requiredString(row.source_id, "source_id"),
-      },
-    });
-  }
-
-  return rows.length;
-}
-
-async function upsertEnrollmentPlans(tx: Prisma.TransactionClient) {
-  const rows = await readCsvRows<EnrollmentPlanRow>(cleanedCsvPaths.enrollmentPlans);
-
-  for (const row of rows) {
-    const year = requiredInt(row.year, "year");
-    const provinceCode = requiredString(row.province_code, "province_code");
-    const batchCode = requiredString(row.batch_code, "batch_code");
-    const subjectTrack = requiredString(row.subject_track, "subject_track");
-    const collegeCode = requiredString(row.college_code, "college_code");
-    const groupCode = requiredString(row.group_code, "group_code");
-    const majorCode = requiredString(row.major_code, "major_code");
-
-    await tx.majorPlan.upsert({
-      where: {
-        year_provinceCode_batchCode_subjectTrack_collegeCode_groupCode_majorCode: {
-          year,
-          provinceCode,
-          batchCode,
-          subjectTrack,
-          collegeCode,
-          groupCode,
-          majorCode,
-        },
-      },
-      create: {
-        year,
-        provinceCode,
-        batchCode,
-        subjectTrack,
-        collegeCode,
-        groupCode,
-        majorCode,
-        majorName: requiredString(row.major_name, "major_name"),
-        subjectRequirement: optionalString(row.subject_requirement),
-        planCount: requiredInt(row.plan_count, "plan_count"),
-        tuition: optionalInt(row.tuition),
-        duration: optionalString(row.duration),
-        campus: optionalString(row.campus),
-        note: optionalString(row.note),
-        sourceId: requiredString(row.source_id, "source_id"),
-      },
-      update: {
-        majorName: requiredString(row.major_name, "major_name"),
-        subjectRequirement: optionalString(row.subject_requirement),
-        planCount: requiredInt(row.plan_count, "plan_count"),
-        tuition: optionalInt(row.tuition),
-        duration: optionalString(row.duration),
-        campus: optionalString(row.campus),
-        note: optionalString(row.note),
-        sourceId: requiredString(row.source_id, "source_id"),
-      },
-    });
-  }
-
-  return rows.length;
-}
-
 async function replaceAdmissionResults(tx: Prisma.TransactionClient) {
   const rows = await readCsvRows<AdmissionResultRow>(cleanedCsvPaths.admissionResults);
 
@@ -473,6 +259,154 @@ async function replaceAdmissionResults(tx: Prisma.TransactionClient) {
       sourceId: requiredString(row.source_id, "source_id"),
     })),
   });
+
+  return rows.length;
+}
+
+async function replaceScoreSegments(tx: Prisma.TransactionClient) {
+  const rows = await readCsvRows<ScoreSegmentRow>(cleanedCsvPaths.scoreSegments);
+
+  await tx.scoreSegment.deleteMany();
+  if (rows.length === 0) {
+    return 0;
+  }
+
+  for (const chunk of chunkRows(rows)) {
+    await tx.scoreSegment.createMany({
+      data: chunk.map((row) => ({
+        year: requiredInt(row.year, "year"),
+        provinceCode: requiredString(row.province_code, "province_code"),
+        subjectTrack: requiredString(row.subject_track, "subject_track"),
+        score: requiredInt(row.score, "score"),
+        count: requiredInt(row.count, "count"),
+        cumulativeCount: requiredInt(row.cumulative_count, "cumulative_count"),
+        rankMin: optionalInt(row.rank_min),
+        rankMax: optionalInt(row.rank_max),
+        sourceId: requiredString(row.source_id, "source_id"),
+      })),
+    });
+  }
+
+  return rows.length;
+}
+
+async function replaceColleges(tx: Prisma.TransactionClient) {
+  const rows = await readCsvRows<CollegeRow>(cleanedCsvPaths.colleges);
+  const unique = uniqueRows(rows, (row) => requiredString(row.college_code, "college_code"));
+
+  await tx.college.deleteMany();
+  if (unique.length === 0) {
+    return 0;
+  }
+
+  for (const chunk of chunkRows(unique)) {
+    await tx.college.createMany({
+      data: chunk.map((row) => ({
+        collegeCode: requiredString(row.college_code, "college_code"),
+        collegeName: requiredString(row.college_name, "college_name"),
+        province: optionalString(row.province),
+        city: optionalString(row.city),
+        level: optionalString(row.level),
+        ownership: optionalString(row.ownership),
+        tags: toJsonObject(optionalJson(row.tags)),
+        officialSite: optionalString(row.official_site),
+        sourceId: optionalString(row.source_id),
+      })),
+    });
+  }
+
+  return unique.length;
+}
+
+async function replaceMajors(tx: Prisma.TransactionClient) {
+  const rows = await readCsvRows<MajorRow>(cleanedCsvPaths.majors);
+  const unique = uniqueRows(rows, (row) =>
+    [
+      requiredString(row.major_code, "major_code"),
+      requiredString(row.major_name, "major_name"),
+      requiredString(row.source_id, "source_id"),
+    ].join("|"),
+  );
+
+  await tx.major.deleteMany();
+  if (unique.length === 0) {
+    return 0;
+  }
+
+  for (const chunk of chunkRows(unique)) {
+    await tx.major.createMany({
+      data: chunk.map((row) => ({
+        majorCode: requiredString(row.major_code, "major_code"),
+        majorName: requiredString(row.major_name, "major_name"),
+        majorCategory: optionalString(row.major_category),
+        degreeCategory: optionalString(row.degree_category),
+        duration: optionalString(row.duration),
+        notes: optionalString(row.notes),
+        sourceId: requiredString(row.source_id, "source_id"),
+      })),
+    });
+  }
+
+  return unique.length;
+}
+
+async function replaceCollegeGroups(tx: Prisma.TransactionClient) {
+  const rows = await readCsvRows<CollegeGroupRow>(cleanedCsvPaths.collegeGroups);
+
+  await tx.collegeGroup.deleteMany();
+  if (rows.length === 0) {
+    return 0;
+  }
+
+  for (const chunk of chunkRows(rows)) {
+    await tx.collegeGroup.createMany({
+      data: chunk.map((row) => ({
+        year: requiredInt(row.year, "year"),
+        provinceCode: requiredString(row.province_code, "province_code"),
+        batchCode: requiredString(row.batch_code, "batch_code"),
+        subjectTrack: requiredString(row.subject_track, "subject_track"),
+        collegeCode: requiredString(row.college_code, "college_code"),
+        groupCode: requiredString(row.group_code, "group_code"),
+        collegeNameSnapshot: optionalString(row.college_name),
+        subjectRequirement: requiredString(row.subject_requirement, "subject_requirement"),
+        groupNote: optionalString(row.group_note),
+        sourceId: requiredString(row.source_id, "source_id"),
+      })),
+    });
+  }
+
+  return rows.length;
+}
+
+async function replaceEnrollmentPlans(tx: Prisma.TransactionClient) {
+  const rows = await readCsvRows<EnrollmentPlanRow>(cleanedCsvPaths.enrollmentPlans);
+
+  await tx.majorPlan.deleteMany();
+  if (rows.length === 0) {
+    return 0;
+  }
+
+  for (const chunk of chunkRows(rows)) {
+    await tx.majorPlan.createMany({
+      data: chunk.map((row) => ({
+        year: requiredInt(row.year, "year"),
+        provinceCode: requiredString(row.province_code, "province_code"),
+        batchCode: requiredString(row.batch_code, "batch_code"),
+        subjectTrack: requiredString(row.subject_track, "subject_track"),
+        collegeCode: requiredString(row.college_code, "college_code"),
+        groupCode: requiredString(row.group_code, "group_code"),
+        majorCode: requiredString(row.major_code, "major_code"),
+        majorName: requiredString(row.major_name, "major_name"),
+        subjectRequirement: optionalString(row.subject_requirement),
+        planCount: requiredInt(row.plan_count, "plan_count"),
+        tuition: optionalInt(row.tuition),
+        duration: optionalString(row.duration),
+        campus: optionalString(row.campus),
+        note: optionalString(row.note),
+        sourceId: requiredString(row.source_id, "source_id"),
+      })),
+    });
+  }
 
   return rows.length;
 }
@@ -507,11 +441,17 @@ export async function importWeek3Data(prisma: PrismaClient): Promise<ImportSumma
     async (tx) => {
       const sources = await upsertSources(tx);
       const provincePolicies = await upsertPolicies(tx);
-      const colleges = await upsertColleges(tx);
-      const majors = await upsertMajors(tx);
-      const scoreSegments = await upsertScoreSegments(tx);
-      const collegeGroups = await upsertCollegeGroups(tx);
-      const enrollmentPlans = await upsertEnrollmentPlans(tx);
+
+      await tx.admissionResult.deleteMany();
+      await tx.majorPlan.deleteMany();
+      await tx.charterRule.deleteMany();
+      await tx.collegeGroup.deleteMany();
+
+      const scoreSegments = await replaceScoreSegments(tx);
+      const colleges = await replaceColleges(tx);
+      const majors = await replaceMajors(tx);
+      const collegeGroups = await replaceCollegeGroups(tx);
+      const enrollmentPlans = await replaceEnrollmentPlans(tx);
       const admissionResults = await replaceAdmissionResults(tx);
       const charterRules = await replaceCharterRules(tx);
 
@@ -527,6 +467,6 @@ export async function importWeek3Data(prisma: PrismaClient): Promise<ImportSumma
         charterRules,
       };
     },
-    { timeout: 60_000 },
+    { timeout: 180_000 },
   );
 }

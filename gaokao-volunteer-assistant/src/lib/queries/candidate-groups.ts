@@ -134,7 +134,7 @@ export async function getCandidateCollegeGroups(
   profile: CandidateProfile,
   options: CandidateGroupQueryOptions = {},
 ) {
-  const limit = Math.min(Math.max(options.limit ?? 30, 1), 500);
+  const limit = Math.min(Math.max(options.limit ?? 30, 1), candidatePoolLimit);
   const offset = Math.max(options.offset ?? 0, 0);
   const scoreRankCheck = await validateScoreAndRank(profile);
   const selectedSubjects = getSelectedAnhuiSubjects(profile);
