@@ -66,6 +66,7 @@ type CollegeGroupLike = {
   subjectTrack: string;
   collegeCode: string;
   groupCode: string;
+  collegeNameSnapshot?: string | null;
   subjectRequirement: string;
   groupNote: string | null;
   college: CollegeLike & {
@@ -107,7 +108,7 @@ export function serializeCollegeGroup(group: CollegeGroupLike) {
     },
     college: {
       collegeCode: group.college.collegeCode,
-      collegeName: group.college.collegeName,
+      collegeName: group.collegeNameSnapshot ?? group.college.collegeName,
       province: group.college.province,
       city: group.college.city,
       level: group.college.level,

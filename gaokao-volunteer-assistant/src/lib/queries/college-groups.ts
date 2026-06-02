@@ -29,7 +29,7 @@ export async function listCollegeGroups(query: CollegeGroupQuery) {
     where.OR = [
       { collegeCode: { contains: query.q } },
       { groupCode: { contains: query.q } },
-      { college: { collegeName: { contains: query.q } } },
+      { collegeNameSnapshot: { contains: query.q } },
     ];
   }
 

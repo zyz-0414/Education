@@ -58,6 +58,7 @@ EXPECTED_HEADERS = {
         "subject_track",
         "college_code",
         "group_code",
+        "college_name",
         "subject_requirement",
         "group_note",
         "source_id",

@@ -37,6 +37,7 @@ type CollegeGroupRow = SourceBackedRow & {
   subject_track: string;
   college_code: string;
   group_code: string;
+  college_name: string;
 };
 
 type EnrollmentPlanRow = SourceBackedRow & {
@@ -141,6 +142,56 @@ function assertCollegeRefs(
   }
 }
 
+function assertCleanCollegeNames(label: string, rows: Array<CollegeRow | CollegeGroupRow>) {
+  const suspicious = rows
+    .map((row) => {
+      const collegeCode = requiredString(row.college_code, "college_code");
+      const collegeName = requiredString(row.college_name, "college_name");
+      return {
+        collegeCode,
+        collegeName,
+      };
+    })
+    .filter(({ collegeName }) => /^\d/.test(collegeName) || collegeName.includes("�"));
+
+  if (suspicious.length > 0) {
+    const examples = suspicious
+      .slice(0, 5)
+      .map(({ collegeCode, collegeName }) => `${collegeCode}:${collegeName}`)
+      .join(", ");
+    throw new Error(`${label} has suspicious college_name values: ${examples}`);
+  }
+}
+
+function collectCollegeCodeNameWarnings(collegeGroups: CollegeGroupRow[]) {
+  const namesByCode = new Map<string, Set<string>>();
+
+  for (const row of collegeGroups) {
+    const collegeCode = requiredString(row.college_code, "college_code");
+    const collegeName = requiredString(row.college_name, "college_name");
+    const names = namesByCode.get(collegeCode) ?? new Set<string>();
+    names.add(collegeName);
+    namesByCode.set(collegeCode, names);
+  }
+
+  const conflicts = Array.from(namesByCode.entries())
+    .filter(([, names]) => names.size > 1)
+    .sort(([left], [right]) => left.localeCompare(right));
+
+  if (conflicts.length === 0) {
+    return [];
+  }
+
+  const examples = conflicts
+    .slice(0, 5)
+    .map(([collegeCode, names]) => `${collegeCode}=${Array.from(names).join("/")}`)
+    .join("; ");
+
+  return [
+    `college_code is reused across different college_name snapshots in ${conflicts.length} cases; use college_groups.college_name for year-specific display and history matching. Examples: ${examples}`,
+  ];
+}
+
 function validateScoreSegments(rows: ScoreSegmentRow[]) {
   for (const row of rows) {
     const count = requiredInt(row.count, "count");
@@ -234,6 +285,8 @@ export async function validateWeek3Csv(): Promise<CsvValidationSummary> {
   );
 
   validateScoreSegments(scoreSegments);
+  assertCleanCollegeNames("colleges", colleges);
+  assertCleanCollegeNames("college_groups", collegeGroups);
 
   for (const [label, rows] of [
     ["score_segments", scoreSegments],
@@ -265,6 +318,6 @@ export async function validateWeek3Csv(): Promise<CsvValidationSummary> {
       admissionResults: admissionResults.length,
       charterRules: charterRules.length,
     },
-    warnings: [],
+    warnings: collectCollegeCodeNameWarnings(collegeGroups),
   };
 }

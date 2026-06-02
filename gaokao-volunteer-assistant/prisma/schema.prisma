@@ -8,7 +8,7 @@ datasource db {
 }
 
 model Source {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   title         String
   sourceUrl     String
   publisher     String?
@@ -16,19 +16,19 @@ model Source {
   fetchedAt     DateTime?
   fileHash      String?
   parserVersion String?
-  reviewStatus  String   @default("pending")
+  reviewStatus  String    @default("pending")
   notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   provincePolicies ProvincePolicy[]
-  scoreSegments     ScoreSegment[]
-  colleges          College[]
-  majors            Major[]
-  collegeGroups     CollegeGroup[]
-  majorPlans        MajorPlan[]
-  admissionResults  AdmissionResult[]
-  charterRules      CharterRule[]
+  scoreSegments    ScoreSegment[]
+  colleges         College[]
+  majors           Major[]
+  collegeGroups    CollegeGroup[]
+  majorPlans       MajorPlan[]
+  admissionResults AdmissionResult[]
+  charterRules     CharterRule[]
 
   @@map("source")
 }
@@ -69,17 +69,17 @@ model ScoreSegment {
 }
 
 model College {
-  id             String  @id @default(uuid())
-  collegeCode    String  @unique
-  collegeName    String
-  province       String?
-  city           String?
-  level          String?
-  ownership      String?
-  tags           Json?
-  officialSite   String?
-  sourceId       String?
-  source         Source? @relation(fields: [sourceId], references: [id])
+  id           String  @id @default(uuid())
+  collegeCode  String  @unique
+  collegeName  String
+  province     String?
+  city         String?
+  level        String?
+  ownership    String?
+  tags         Json?
+  officialSite String?
+  sourceId     String?
+  source       Source? @relation(fields: [sourceId], references: [id])
 
   groups         CollegeGroup[]
   majorPlans     MajorPlan[]
@@ -106,18 +106,19 @@ model Major {
 }
 
 model CollegeGroup {
-  id                 String @id @default(uuid())
-  year               Int
-  provinceCode       String
-  batchCode          String
-  subjectTrack       String
-  collegeCode        String
-  groupCode          String
-  subjectRequirement String
-  groupNote          String?
-  sourceId           String
-  source             Source @relation(fields: [sourceId], references: [id])
-  college            College @relation(fields: [collegeCode], references: [collegeCode])
+  id                  String  @id @default(uuid())
+  year                Int
+  provinceCode        String
+  batchCode           String
+  subjectTrack        String
+  collegeCode         String
+  groupCode           String
+  collegeNameSnapshot String?
+  subjectRequirement  String
+  groupNote           String?
+  sourceId            String
+  source              Source  @relation(fields: [sourceId], references: [id])
+  college             College @relation(fields: [collegeCode], references: [collegeCode])
 
   majorPlans     MajorPlan[]
   admissionItems AdmissionResult[]

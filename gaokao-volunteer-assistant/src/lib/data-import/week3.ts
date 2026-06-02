@@ -66,6 +66,7 @@ type CollegeGroupRow = {
   subject_track: string;
   college_code: string;
   group_code: string;
+  college_name: string;
   subject_requirement: string;
   group_note: string;
   source_id: string;
@@ -371,11 +372,13 @@ async function upsertCollegeGroups(tx: Prisma.TransactionClient) {
         subjectTrack,
         collegeCode,
         groupCode,
+        collegeNameSnapshot: optionalString(row.college_name),
         subjectRequirement: requiredString(row.subject_requirement, "subject_requirement"),
         groupNote: optionalString(row.group_note),
         sourceId: requiredString(row.source_id, "source_id"),
       },
       update: {
+        collegeNameSnapshot: optionalString(row.college_name),
         subjectRequirement: requiredString(row.subject_requirement, "subject_requirement"),
         groupNote: optionalString(row.group_note),
         sourceId: requiredString(row.source_id, "source_id"),

@@ -17,8 +17,10 @@
     "data:import": "tsx -r dotenv/config data/scripts/import_week3_data.ts",
     "test:week4": "tsx tests/week4-rules.ts",
     "test:week5": "tsx tests/week5-recommend.ts",
+    "test:week6": "tsx tests/week6-data-guard.ts",
     "verify:week4": "npm run check && npm run data:check && npm run data:validate && npm run test:week4",
     "verify:week5": "npm run verify:week4 && npm run test:week5",
+    "verify:week6": "npm run verify:week5 && npm run test:week6 && npm run build",
     "check": "npm run lint && npm run db:validate"
   },
   "dependencies": {

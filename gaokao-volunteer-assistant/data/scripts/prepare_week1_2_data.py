@@ -92,6 +92,13 @@ def parse_int(text: str) -> int | None:
     return int(cleaned) if cleaned else None
 
 
+def clean_college_name(college_code: str, college_name: str) -> str:
+    name = college_name.strip()
+    if college_code and len(name) > 1 and name[0].isdigit() and name[0] == college_code[-1]:
+        return name[1:].strip()
+    return name
+
+
 def extract_score_segments(pdf_path: Path, year: int, source_id: str) -> list[dict[str, object]]:
     reader = PdfReader(str(pdf_path))
     if reader.is_encrypted:
@@ -210,6 +217,7 @@ def parse_admission_ocr(job: AdmissionOcrJob) -> list[dict[str, object]]:
                 continue
             college_code = merged_match.group(1)
             college_name = merged_match.group(2)
+        college_name = clean_college_name(college_code, college_name)
         if "专业组" not in group_text:
             continue
 
@@ -482,6 +490,7 @@ def main() -> None:
             "subject_track": row["subject_track"],
             "college_code": row["college_code"],
             "group_code": row["group_code"],
+            "college_name": row["college_name"],
             "subject_requirement": row["subject_requirement"],
             "group_note": row["group_note"],
             "source_id": row["source_id"],
@@ -496,6 +505,7 @@ def main() -> None:
             "subject_track": row["subject_track"],
             "college_code": row["college_code"],
             "group_code": row["group_code"],
+            "college_name": "陕西国际商贸学院",
             "subject_requirement": row["subject_requirement"],
             "group_note": "来自招生计划样例",
             "source_id": row["source_id"],
@@ -529,7 +539,18 @@ def main() -> None:
     )
     write_csv(
         CLEANED / "college_groups.csv",
-        ["year", "province_code", "batch_code", "subject_track", "college_code", "group_code", "subject_requirement", "group_note", "source_id"],
+        [
+            "year",
+            "province_code",
+            "batch_code",
+            "subject_track",
+            "college_code",
+            "group_code",
+            "college_name",
+            "subject_requirement",
+            "group_note",
+            "source_id",
+        ],
         list(group_by_key.values()),
     )
     write_csv(

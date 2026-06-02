@@ -21,8 +21,8 @@ POST /api/recommendations
 
 ```json
 {
-  "requirePlan": false,
-  "includeHighRisk": true,
+  "requirePlan": true,
+  "includeHighRisk": false,
   "limit": 45,
   "offset": 0,
   "profile": {
@@ -40,6 +40,8 @@ POST /api/recommendations
   }
 }
 ```
+
+正式推荐默认要求有当年招生计划明细。关闭 `requirePlan` 只适合排查 OCR 历史样例，不应作为填报建议。
 
 返回内容在第 4 周候选集字段基础上，为每个院校专业组新增：
 

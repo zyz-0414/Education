@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 
 const requestSchema = z.object({
   profile: candidateProfileSchema,
-  requirePlan: z.boolean().default(false),
-  includeHighRisk: z.boolean().default(true),
+  requirePlan: z.boolean().default(true),
+  includeHighRisk: z.boolean().default(false),
   limit: z.coerce.number().int().min(1).max(100).default(45),
   offset: z.coerce.number().int().min(0).default(0),
 });

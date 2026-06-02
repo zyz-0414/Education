@@ -14,7 +14,14 @@ const RECOMMENDATION_POOL_LIMIT = 500;
 type CandidateResult = Awaited<ReturnType<typeof getCandidateCollegeGroups>>;
 type CandidateItem = CandidateResult["items"][number];
 type AdmissionHistory = Prisma.AdmissionResultGetPayload<{
-  include: { source: true };
+  include: {
+    source: true;
+    group: {
+      select: {
+        collegeNameSnapshot: true;
+      };
+    };
+  };
 }>;
 
 export type RecommendationQueryOptions = {
@@ -35,12 +42,41 @@ const emptyTierCounts = (): Record<TierBucket, number> => ({
   unranked: 0,
 });
 
-function itemKey(item: CandidateItem) {
-  return `${item.key.collegeCode}|${item.key.groupCode}`;
+type PreviousPlan = Prisma.MajorPlanGetPayload<{
+  select: {
+    collegeCode: true;
+    groupCode: true;
+    planCount: true;
+    group: {
+      select: {
+        collegeNameSnapshot: true;
+      };
+    };
+  };
+}>;
+
+function normalizeCollegeName(value: string | null | undefined) {
+  return (value ?? "").trim();
 }
 
-function rowKey(row: { collegeCode: string; groupCode: string }) {
+function codeGroupKey(row: { collegeCode: string; groupCode: string }) {
   return `${row.collegeCode}|${row.groupCode}`;
+}
+
+function rowKey(row: { collegeCode: string; groupCode: string }, collegeName: string | null | undefined) {
+  return `${codeGroupKey(row)}|${normalizeCollegeName(collegeName)}`;
+}
+
+function itemKey(item: CandidateItem) {
+  return rowKey(item.key, item.college.collegeName);
+}
+
+function admissionHistoryKey(row: AdmissionHistory) {
+  return rowKey(row, row.group.collegeNameSnapshot);
+}
+
+function previousPlanKey(row: PreviousPlan) {
+  return rowKey(row, row.group.collegeNameSnapshot);
 }
 
 function getReferenceYears(targetYear: number) {
@@ -237,9 +273,10 @@ export async function getCollegeGroupRecommendations(
 ) {
   const limit = Math.min(Math.max(options.limit ?? 45, 1), 100);
   const offset = Math.max(options.offset ?? 0, 0);
-  const includeHighRisk = options.includeHighRisk ?? true;
+  const includeHighRisk = options.includeHighRisk ?? false;
+  const requirePlan = options.requirePlan ?? true;
   const candidateResult = await getCandidateCollegeGroups(profile, {
-    requirePlan: options.requirePlan,
+    requirePlan,
     limit: RECOMMENDATION_POOL_LIMIT,
     offset: 0,
   });
@@ -271,7 +308,7 @@ export async function getCollegeGroupRecommendations(
   const uniqueKeys = Array.from(
     new Map(
       candidateResult.items.map((item) => [
-        itemKey(item),
+        codeGroupKey(item.key),
         {
           collegeCode: item.key.collegeCode,
           groupCode: item.key.groupCode,
@@ -294,7 +331,14 @@ export async function getCollegeGroupRecommendations(
         OR: keyWhere,
       },
       orderBy: [{ year: "desc" }, { minRank: "desc" }],
-      include: { source: true },
+      include: {
+        source: true,
+        group: {
+          select: {
+            collegeNameSnapshot: true,
+          },
+        },
+      },
     }),
     prisma.majorPlan.findMany({
       where: {
@@ -308,6 +352,11 @@ export async function getCollegeGroupRecommendations(
         collegeCode: true,
         groupCode: true,
         planCount: true,
+        group: {
+          select: {
+            collegeNameSnapshot: true,
+          },
+        },
       },
     }),
   ]);
@@ -315,12 +364,13 @@ export async function getCollegeGroupRecommendations(
   const previousPlanCounts = new Map<string, number>();
 
   for (const history of historyRows) {
-    const key = rowKey(history);
+    const key = admissionHistoryKey(history);
     historiesByGroup.set(key, [...(historiesByGroup.get(key) ?? []), history]);
   }
 
   for (const plan of previousPlans) {
-    previousPlanCounts.set(rowKey(plan), (previousPlanCounts.get(rowKey(plan)) ?? 0) + plan.planCount);
+    const key = previousPlanKey(plan);
+    previousPlanCounts.set(key, (previousPlanCounts.get(key) ?? 0) + plan.planCount);
   }
 
   const recommendations = candidateResult.items

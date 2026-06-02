@@ -79,11 +79,14 @@ npm run data:check
 npm run data:validate
 npm run data:import
 npm run verify:week4
+npm run verify:week5
+npm run test:week6
+npm run verify:week6
 ```
 
 ## 当前状态
 
-第 0 周准备已完成基础骨架。第 1-2 周已完成安徽首批数据整理：2024、2025 一分一段完整清洗，2024、2025 普通本科批投档官方长图留存并生成首批 OCR 样例，2025 招生计划样例已结构化。第 3 周已补齐 Prisma 迁移、数据导入命令、CSV 完整性校验和院校专业组基础查询 API。第 4 周已完成考生建档工作台、选科组合校验、分数位次校验、普通本科批过滤和选科不符过滤。下一步进入推荐算法。
+第 0 周准备已完成基础骨架。第 1-2 周已完成安徽首批数据整理：2024、2025 一分一段完整清洗，2024、2025 普通本科批投档官方长图留存并生成首批 OCR 样例，2025 招生计划样例已结构化。第 3 周已补齐 Prisma 迁移、数据导入命令、CSV 完整性校验和院校专业组基础查询 API。第 4 周已完成考生建档工作台、选科组合校验、分数位次校验、普通本科批过滤和选科不符过滤。第 5 周已完成推荐算法和推荐接口。第 6 周已完成推荐结果页、桌面表格、手机卡片、风险标签、推荐理由和院校专业组详情入口，并完成院校代码跨年复用数据审计、名称快照隔离、搜索修正和高危项默认隐藏。
 
 ## 第 3 周数据库与查询
 
@@ -113,6 +116,20 @@ npm run verify:week4
 - `POST /api/candidate-groups`
 
 详见 `docs/week4-profile-filtering.md`。
+
+## 第 5-6 周推荐
+
+```bash
+npm run test:week5
+npm run test:week6
+npm run verify:week6
+```
+
+推荐 API：
+
+- `POST /api/recommendations`
+
+详见 `docs/week5-recommendation-algorithm.md`、`docs/week6-recommendation-results.md` 和 `docs/week6-data-audit.md`。
 
 ## 第 0-4 周本地数据库收口
 
