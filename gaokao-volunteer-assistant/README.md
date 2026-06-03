@@ -19,6 +19,7 @@
 - Tailwind CSS
 - PostgreSQL + Prisma
 - Python 数据清洗脚本
+- PDFKit
 - 后续可加入 Recharts、TanStack Table、shadcn/ui、PWA
 
 ## 目录
@@ -49,7 +50,7 @@ npm run db:migrate
 npm run dev
 ```
 
-打开 http://localhost:3000 查看准备工作台。
+打开 http://localhost:3000 查看安徽高考志愿助手。
 
 ## 数据准备清单
 
@@ -72,6 +73,7 @@ npm run build
 npm run db:validate
 npm run db:generate
 npm run db:migrate
+npm run db:deploy
 npm run check
 python -m pip install -r data/requirements.txt
 npm run data:prepare
@@ -85,13 +87,16 @@ npm run test:week6
 npm run verify:week6
 npm run test:week7
 npm run verify:week7
+npm run test:week8
+npm run verify:week8
+npm run verify:week9
 ```
 
 `npm run data:prepare` 当前默认从 `D:\education\data` 读取已收集的安徽 Excel，生成 2024-2025 专业组口径 cleaned CSV，并接入 2023 旧文理科院校级参考位次；旧的官方样例/OCR 准备脚本保留为 `npm run data:prepare:legacy`。详见 `docs/collected-anhui-data-import.md`。
 
 ## 当前状态
 
-第 0 周准备已完成基础骨架。第 1-2 周已完成安徽首批数据整理。当前 cleaned CSV 已升级为收集版数据，包含 2024、2025 专业组口径数据和 2023 旧文理科院校级参考位次，共 47,401 条招生计划和 10,758 条投档结果。第 3 周已补齐 Prisma 迁移、数据导入命令、CSV 完整性校验和院校专业组基础查询 API。第 4 周已完成考生建档工作台、选科组合校验、分数位次校验、普通本科批过滤和选科不符过滤。第 5 周已完成推荐算法和推荐接口。第 6 周已完成推荐结果页、桌面表格、手机卡片、风险标签、推荐理由和院校专业组详情入口，并完成院校代码跨年复用数据审计、名称快照隔离、搜索修正和高危项默认隐藏。第 7 周已完成志愿表编辑器、加入/删除、上移/下移排序、45 个志愿限制、冲稳保比例提示和本地方案保存；当前推荐模型已升级为近三年参考位次。
+第 0 周准备已完成基础骨架。第 1-2 周已完成安徽首批数据整理。当前 cleaned CSV 已升级为收集版数据，包含 2024、2025 专业组口径数据和 2023 旧文理科院校级参考位次，共 47,401 条招生计划和 10,758 条投档结果。第 3 周已补齐 Prisma 迁移、数据导入命令、CSV 完整性校验和院校专业组基础查询 API。第 4 周已完成考生建档工作台、选科组合校验、分数位次校验、普通本科批过滤和选科不符过滤。第 5 周已完成推荐算法和推荐接口。第 6 周已完成推荐结果页、桌面表格、手机卡片、风险标签、推荐理由和院校专业组详情入口，并完成院校代码跨年复用数据审计、名称快照隔离、搜索修正和高危项默认隐藏。第 7 周已完成志愿表编辑器、加入/删除、上移/下移排序、45 个志愿限制、冲稳保比例提示和浏览器本地方案保存。第 8 周已完成风险检测、方案报告页面和 PDF 导出；当前推荐模型已升级为近三年参考位次。第 9 周已完成上线前收口：正式产品文案、Vercel 部署配置、Neon 数据库说明、生产迁移命令、中文 PDF 字体和第 9 周验收文档。
 
 ## 第 3 周数据库与查询
 
@@ -144,6 +149,24 @@ npm run verify:week7
 ```
 
 首页工作台可以把推荐院校专业组加入志愿表，支持删除、上移/下移、45 个志愿限制、冲稳保比例提示和浏览器本地方案保存。详见 `docs/week7-volunteer-plan-editor.md`。
+
+## 第 8 周风险报告
+
+```bash
+npm run test:week8
+npm run verify:week8
+```
+
+首页工作台可以根据志愿表生成滑档、保底不足、排斥专业、高学费和低置信度风险摘要，并可打开 `/report` 查看方案报告；志愿表和报告页均支持导出 PDF。详见 `docs/week8-risk-report.md`。
+
+## 第 9 周上线准备
+
+```bash
+npm run db:deploy
+npm run verify:week9
+```
+
+第一版线上 Demo 推荐使用 Vercel + Neon PostgreSQL。Vercel 构建命令使用 `npm run vercel-build`，生产数据库迁移使用 `npm run db:deploy`，数据导入仍使用 `npm run data:import`。PDF 导出已内置简体中文字体，避免 Linux 部署环境缺少中文字体。详见 `docs/week9-launch.md`。
 
 ## 第 0-4 周本地数据库收口
 

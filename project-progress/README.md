@@ -1,24 +1,29 @@
 # 安徽高考志愿助手工程进度记录
 
-更新时间：2026-06-02
+更新时间：2026-06-03
 
 ## 当前项目位置
 
 - 项目根目录：`D:\education\gaokao-volunteer-assistant`
 - 本地访问地址：`http://localhost:3000`
+- 线上访问地址：https://gaokao-volunteer-assistant.vercel.app
 - 双击启动入口：`D:\education\start-gaokao-assistant.bat`
 - 数据库自动启动：优先启动本机 PostgreSQL 服务 `postgresql*`，找不到服务时再尝试 Docker Desktop。
 
-## 前七周验收结论
+## 前九周验收结论
 
-第 0-7 周任务已全部完成并通过本机验证。
+第 0-9 周任务已全部完成并通过本机验证。
 
-- `npm run verify:week7` 已通过，覆盖 lint、Prisma schema、CSV 表头、CSV 完整性、第 4 周规则烟测、第 5 周推荐算法测试、第 6 周数据守卫测试、第 6 周生产构建和第 7 周志愿表规则测试。
+- `npm run verify:week8` 已通过，覆盖 lint、Prisma schema、CSV 表头、CSV 完整性、第 4 周规则烟测、第 5 周推荐算法测试、第 6 周数据守卫测试、第 6 周生产构建、第 7 周志愿表规则测试和第 8 周风险报告测试。
+- `npm run verify:week9` 已新增，用于串联第 0-8 周验收和生产构建。
 - PostgreSQL 18.4 服务已启动，`localhost:5432` 可连接。
 - 数据库 `gaokao_volunteer_assistant` 已创建，迁移和数据导入已完成。
 - `POST /api/candidate-groups` 已用真实数据库验证成功。
 - `POST /api/recommendations` 已实现，可生成安徽普通本科批推荐列表。
-- 当前页面可以在 `http://localhost:3000` 完成安徽考生建档、分数位次校验、推荐生成、桌面表格/手机卡片展示、风险标签查看、院校专业组详情查看、志愿表编辑和本地方案保存。
+- 当前页面可以在 `http://localhost:3000` 完成安徽考生建档、分数位次校验、推荐生成、桌面表格/手机卡片展示、风险标签查看、院校专业组详情查看、志愿表编辑、本地方案保存和方案风险报告摘要。
+- 当前报告页可以在 `http://localhost:3000/report` 读取本机已保存方案，生成滑档、保底不足、排斥专业、高学费和低置信度方案报告。
+- 已完成第 9 周上线发布：Vercel 项目已绑定，Neon PostgreSQL 免费数据库已创建并导入数据，线上地址为 `https://gaokao-volunteer-assistant.vercel.app`。
+- 已用浏览器验证默认样例可生成推荐、加入并保存方案、打开 `/report`，报告页可显示风险检测清单、调整建议和数据口径；浏览器控制台无错误。
 - 已完成第 6 周数据一致性审计：确认 22 个院校代码存在跨年名称复用、30 组历史匹配键存在跨年混用风险，推荐展示、搜索和历史匹配均已改用当年院校名称快照隔离。
 - `550` 分、`70000` 位次样例在默认推荐、正式推荐和调试但隐藏高危项模式下均不会返回北京大学；显式打开高危项时，北京大学只会以 `high_risk` 出现。
 
@@ -64,6 +69,42 @@
   - `npm run test:week7`
   - `npm run verify:week7`
 - 已新增第 7 周说明文档：`D:\education\gaokao-volunteer-assistant\docs\week7-volunteer-plan-editor.md`。
+
+## 2026-06-02 第八周风险检测和报告
+
+- 已完成第 8 周风险检测和报告：
+  - 滑档风险；
+  - 保底不足；
+  - 专业组排斥专业；
+  - 高学费和预算风险；
+  - 低置信度；
+  - 首页方案报告摘要；
+  - `/report` 方案报告页面。
+- 已新增第 8 周风险报告模块和测试：
+  - `src/lib/volunteer-risk-report.ts`
+  - `src/lib/volunteer-plan-storage.ts`
+  - `tests/week8-risk-report.ts`
+  - `npm run test:week8`
+  - `npm run verify:week8`
+- 已新增第 8 周说明文档：`D:\education\gaokao-volunteer-assistant\docs\week8-risk-report.md`。
+- 第 8 周仍使用浏览器本地保存方案，不做账号系统、服务端报告持久化和线上部署。
+
+## 2026-06-03 第九周响应式适配和上线准备
+
+- 页面正式收口为“安徽高考志愿助手”，首页和报告页不再展示开发周次标签。
+- 已新增 Vercel 部署配置：`D:\education\gaokao-volunteer-assistant\vercel.json`。
+- 已新增 Vercel 上传忽略配置：`D:\education\gaokao-volunteer-assistant\.vercelignore`，避免本地 `.env` 和 `.env.local` 进入部署包。
+- 已新增生产迁移命令：`npm run db:deploy`。
+- 已新增第 9 周验收命令：`npm run verify:week9`。
+- `npm run build` 已改为先执行 `prisma generate`，再执行 `next build`。
+- `.env.example` 已补充 Vercel + Neon PostgreSQL 部署说明。
+- PDF 导出已加入项目内中文字体：`D:\education\gaokao-volunteer-assistant\public\fonts\NotoSansCJKsc-Regular.otf`。
+- 已新增第 9 周上线说明文档：`D:\education\gaokao-volunteer-assistant\docs\week9-launch.md`。
+- 已完成 Vercel Production 部署，部署别名为 `https://gaokao-volunteer-assistant.vercel.app`。
+- 已通过 Vercel Marketplace 创建 Neon 数据库资源 `gaokao-volunteer-assistant-db`，区域为 `sin1`，计划为 `free_v3`。
+- 已在 Neon 生产库完成 Prisma 迁移和 cleaned CSV 导入。
+- 已完成线上冒烟：首页 `200`、推荐 API 可返回结果、PDF 导出接口返回 `application/pdf`。
+- 第 9 周仍不做账号系统、服务端方案持久化、支付、专家审核、分享链接、AI 问答、PWA 和扩省功能。
 
 ## 2026-06-02 数据增强与推荐数量修复
 
@@ -192,7 +233,34 @@
   - `npm run test:week7`
   - `npm run verify:week7`
 
+### 第 8 周：风险检测和报告
+
+- 已新增志愿方案风险报告模块。
+- 已实现滑档风险检测。
+- 已实现保底不足检测。
+- 已实现专业组排斥专业检测。
+- 已实现高学费和预算风险检测。
+- 已实现低置信度汇总。
+- 已在首页工作台新增方案报告摘要。
+- 已新增 `/report` 方案报告页面。
+- 风险证据较多时改为滚动显示完整内容，不再只展示前几条。
+- 志愿表和分析报告已支持导出 PDF。
+- 已将方案本地保存扩展为偏好快照和算法快照。
+- 已新增第 8 周说明和验收命令：
+  - `docs/week8-risk-report.md`
+  - `npm run test:week8`
+  - `npm run verify:week8`
+
 ## 后续限制和待办
+
+### 需要评估事项
+
+- npm 生产依赖审查仍有 2 个 `moderate` 提示，来源为 Next.js 依赖链中的 PostCSS advisory。当前 `npm audit fix` 给出的修复建议会触发不合理的大版本/降级动作，暂不强制处理；第 10 周建议结合 Next.js 官方版本和兼容性单独评估。
+- 线上地址当前使用 Vercel 默认域名 `https://gaokao-volunteer-assistant.vercel.app`。如果部分网络访问 `vercel.app` 较慢或不稳定，后续建议绑定自有域名。
+- 线上数据库当前使用 Vercel Marketplace 创建的 Neon `free_v3` 资源，适合第一版 Demo；如果访问量、冷启动或连接数上升，需要评估 Neon 计划升级和连接池策略。
+- 根目录 `D:\education\data` 是本机采集资料池，包含 72 个第三方 Excel/JPG 文件，约 91.8MB，其中部分文件名显示为商业/试看资料。已在根目录 `.gitignore` 中忽略 `/data/`，不随本次公开 GitHub 推送上传；如需入库，必须先确认授权、体积和数据来源登记。
+- 当前线上仍使用浏览器 `localStorage` 保存志愿方案，不支持跨设备同步。后续如需多人演示、分享链接或用户账号，需要评估服务端方案持久化。
+- 第 10 周建议补充回测：用 2024 数据预测 2025，校准冲、稳、保阈值，并形成作品集截图和说明。
 
 ### 本机环境说明
 
@@ -210,17 +278,16 @@
 - 2017-2023 往年数据是旧文理科/院校专业口径，暂不直接混入专业组推荐模型。
 - 招生章程风险规则目前还没有结构化导入。
 
-这些是第一版后续数据增强事项，不阻塞第 0-7 周验收。
+这些是第一版后续数据增强事项，不阻塞第 0-9 周验收。
 
-### 第 7 周之后功能
+### 第 9 周之后功能
 
-- 第 8 周风险检测和报告还没完成。
-- 第 9 周响应式最终适配、部署和公开演示说明还没完成。
+- 第 10 周建议进入回测和作品集打磨：用 2024 数据预测 2025，校准冲稳保阈值，补充演示截图和作品集说明。
 
 ## 下一步建议
 
 1. 如需命令行直接使用 `psql`，把 `E:\PostqreSQL\bin` 加入系统 PATH。
-2. 第 0-7 周已经闭环；后续再进入第 8 周：风险检测、保底不足分析、专业组排斥专业、高学费、低置信度和简版报告页面。
+2. 第 0-9 周已经闭环；后续进入第 10 周：回测、阈值校准和作品集说明。
 
 ## 2026-06-02 推荐算法审查与上传收口
 
@@ -246,6 +313,9 @@ npm run test:week6
 npm run verify:week6
 npm run test:week7
 npm run verify:week7
+npm run test:week8
+npm run verify:week8
+npm run verify:week9
 npm run verify:data
 npm run data:validate
 npm run data:import

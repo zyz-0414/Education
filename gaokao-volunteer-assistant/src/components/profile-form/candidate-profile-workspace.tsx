@@ -11,7 +11,9 @@ import {
   CircleAlert,
   ClipboardList,
   Database,
+  Download,
   ExternalLink,
+  FileText,
   Filter,
   GraduationCap,
   Info,
@@ -32,6 +34,7 @@ import {
   WalletCards,
   XCircle,
 } from "lucide-react";
+import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -42,6 +45,24 @@ import {
   type VolunteerPlanRatioTier,
   type VolunteerPlanReference,
 } from "@/lib/volunteer-plan";
+import {
+  buildVolunteerRiskReport,
+  type VolunteerRiskReport,
+  type VolunteerRiskReportItem,
+  type VolunteerRiskReportSeverity,
+  type VolunteerRiskReportStatus,
+} from "@/lib/volunteer-risk-report";
+import {
+  downloadVolunteerReportPdf,
+  type VolunteerReportPdfPayload,
+  type VolunteerReportPdfPlanItem,
+} from "@/lib/volunteer-report-export";
+import {
+  isStoredVolunteerPlanDraft,
+  volunteerPlanStorageKey,
+  type StoredVolunteerPlanDraft,
+  type StoredVolunteerPlanPreferences,
+} from "@/lib/volunteer-plan-storage";
 
 type FirstChoiceSubject = "physics" | "history";
 type SecondChoiceSubject = "chemistry" | "biology" | "politics" | "geography";
@@ -209,7 +230,6 @@ const riskOptions: Array<{ value: RiskPreference; label: string }> = [
 
 const tierOrder: RecommendationTier[] = ["high_risk", "reach", "match", "safe", "very_safe"];
 const volunteerRatioOrder: VolunteerPlanRatioTier[] = ["reach", "match", "safe", "very_safe"];
-const volunteerPlanStorageKey = "gaokao-volunteer-plan-v1";
 
 const tierLabels: Record<RecommendationTier, string> = {
   reach: "冲",
@@ -270,26 +290,63 @@ function getItemKey(item: RecommendationItem) {
   return `${item.key.year}-${item.key.subjectTrack}-${item.key.collegeCode}-${item.key.groupCode}`;
 }
 
-type StoredVolunteerPlanDraft = {
-  version: 1;
-  savedAt: string;
-  profile: RecommendationResult["profile"] | null;
-  items: RecommendationItem[];
-};
-
-function isStoredVolunteerPlanDraft(value: unknown): value is StoredVolunteerPlanDraft {
-  if (typeof value !== "object" || value === null) return false;
-
-  const draft = value as { items?: unknown; savedAt?: unknown };
-
-  return Array.isArray(draft.items) && typeof draft.savedAt === "string";
-}
+type VolunteerPlanDraft = StoredVolunteerPlanDraft<
+  RecommendationItem,
+  RecommendationResult["profile"],
+  RecommendationResult["algorithm"]
+>;
 
 function toVolunteerPlanReference(item: RecommendationItem): VolunteerPlanReference {
   return {
     planKey: getItemKey(item),
     tier: item.recommendation.tier,
   };
+}
+
+function toVolunteerRiskReportItem(item: RecommendationItem): VolunteerRiskReportItem {
+  return {
+    planKey: getItemKey(item),
+    collegeName: item.college.collegeName,
+    collegeCode: item.key.collegeCode,
+    groupCode: item.key.groupCode,
+    tier: item.recommendation.tier,
+    tierLabel: item.recommendation.tierLabel,
+    referenceRank: item.recommendation.referenceRank,
+    rankGapRatio: item.recommendation.rankGapRatio,
+    lowConfidence: item.recommendation.lowConfidence,
+    confidenceReasons: item.recommendation.confidenceReasons,
+    preferencePenalties: item.recommendation.preferencePenalties,
+    eligiblePlanCount: item.eligibility.eligiblePlanCount,
+    majorPlans: item.majorPlans.map((plan) => ({
+      majorName: plan.majorName,
+      tuition: plan.tuition,
+      note: plan.note,
+    })),
+  };
+}
+
+function toVolunteerReportPdfPlanItem(item: RecommendationItem, index: number): VolunteerReportPdfPlanItem {
+  return {
+    planKey: getItemKey(item),
+    order: index + 1,
+    collegeName: item.college.collegeName,
+    collegeCode: item.key.collegeCode,
+    groupCode: item.key.groupCode,
+    city: item.college.city,
+    tier: item.recommendation.tier,
+    tierLabel: item.recommendation.tierLabel,
+    referenceRank: item.recommendation.referenceRank,
+    rankGapRatio: item.recommendation.rankGapRatio,
+    eligiblePlanCount: item.eligibility.eligiblePlanCount,
+    majorNames: item.majorPlans.map((plan) => plan.majorName),
+  };
+}
+
+function parseTuitionLimit(value: string) {
+  if (!value.trim()) return undefined;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function getDetailHref(item: RecommendationItem) {
@@ -336,6 +393,30 @@ function getVolunteerIssueClass(severity: "info" | "warning" | "danger") {
       return "border-warning bg-warning-soft text-warning";
     default:
       return "border-info bg-info-soft text-info";
+  }
+}
+
+function getReportSeverityClass(severity: VolunteerRiskReportSeverity) {
+  switch (severity) {
+    case "danger":
+      return "border-danger bg-danger-soft text-danger";
+    case "warning":
+      return "border-warning bg-warning-soft text-warning";
+    default:
+      return "border-info bg-info-soft text-info";
+  }
+}
+
+function getReportStatusClass(status: VolunteerRiskReportStatus) {
+  switch (status) {
+    case "ready":
+      return "border-success bg-success-soft text-success";
+    case "needs_attention":
+      return "border-warning bg-warning-soft text-warning";
+    case "high_risk":
+      return "border-danger bg-danger-soft text-danger";
+    default:
+      return "border-line bg-background text-muted";
   }
 }
 
@@ -721,20 +802,24 @@ function VolunteerPlanEditor({
   profile,
   savedAt,
   message,
+  isExportingPdf,
   onMove,
   onRemove,
   onSave,
   onClear,
+  onExportPdf,
 }: {
   items: RecommendationItem[];
   analysis: VolunteerPlanAnalysis;
   profile: RecommendationResult["profile"] | null;
   savedAt: string | null;
   message: string | null;
+  isExportingPdf: boolean;
   onMove: (index: number, direction: "up" | "down") => void;
   onRemove: (item: RecommendationItem) => void;
   onSave: () => void;
   onClear: () => void;
+  onExportPdf: () => void;
 }) {
   const leadIssue =
     analysis.issues.find((issue) => issue.severity === "danger") ??
@@ -770,6 +855,20 @@ function VolunteerPlanEditor({
           >
             <Save aria-hidden className="h-4 w-4" />
             保存
+          </button>
+          <button
+            className="inline-flex h-9 items-center gap-2 rounded border border-line px-3 text-xs font-semibold text-foreground hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!items.length || isExportingPdf}
+            title="导出志愿表和分析报告 PDF"
+            type="button"
+            onClick={onExportPdf}
+          >
+            {isExportingPdf ? (
+              <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download aria-hidden className="h-4 w-4" />
+            )}
+            导出 PDF
           </button>
           <button
             className="inline-flex h-9 items-center gap-2 rounded border border-line px-3 text-xs font-semibold text-muted hover:border-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
@@ -974,6 +1073,172 @@ function VolunteerPlanEditor({
   );
 }
 
+function VolunteerRiskReportPanel({
+  report,
+  profile,
+  algorithm,
+  savedAt,
+  hasItems,
+  isExportingPdf,
+  onSave,
+  onExportPdf,
+}: {
+  report: VolunteerRiskReport;
+  profile: RecommendationResult["profile"] | null;
+  algorithm: RecommendationResult["algorithm"] | null;
+  savedAt: string | null;
+  hasItems: boolean;
+  isExportingPdf: boolean;
+  onSave: () => void;
+  onExportPdf: () => void;
+}) {
+  const statusIcon =
+    report.status === "ready" ? (
+      <ShieldCheck aria-hidden className="h-5 w-5 text-success" />
+    ) : (
+      <AlertTriangle aria-hidden className="h-5 w-5 text-warning" />
+    );
+
+  return (
+    <section className="rounded-lg border border-line bg-panel shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line p-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <FileText aria-hidden className="h-5 w-5 text-accent" />
+            <h2 className="text-lg font-semibold">志愿方案报告</h2>
+          </div>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            {profile
+              ? `${profile.targetYear} · ${getSubjectTrackLabel(profile.firstChoiceSubject)} · ${formatNumber(
+                  profile.score,
+                )} 分 · ${formatNumber(profile.rank)} 位次`
+              : "尚未绑定考生画像"}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`inline-flex h-9 items-center gap-2 rounded border px-3 text-sm font-semibold ${getReportStatusClass(report.status)}`}>
+            {statusIcon}
+            {report.statusLabel}
+          </span>
+          <button
+            className="inline-flex h-9 items-center gap-2 rounded border border-line bg-white px-3 text-sm font-semibold text-foreground transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!hasItems || isExportingPdf}
+            title="导出志愿表和分析报告 PDF"
+            type="button"
+            onClick={onExportPdf}
+          >
+            {isExportingPdf ? (
+              <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download aria-hidden className="h-4 w-4" />
+            )}
+            导出 PDF
+          </button>
+          {hasItems ? (
+            <Link
+              className="inline-flex h-9 items-center gap-2 rounded border border-line bg-white px-3 text-sm font-semibold text-foreground transition hover:border-accent hover:text-accent"
+              href="/report"
+              onClick={() => onSave()}
+            >
+              <ExternalLink aria-hidden className="h-4 w-4" />
+              打开报告
+            </Link>
+          ) : (
+            <span className="inline-flex h-9 items-center gap-2 rounded border border-line bg-background px-3 text-sm text-muted">
+              <ExternalLink aria-hidden className="h-4 w-4" />
+              打开报告
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-4 p-4">
+        <div className="rounded border border-line bg-background p-4">
+          <p className="text-sm leading-6 text-muted">{report.conclusion}</p>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted">
+            {algorithm ? (
+              <span className="rounded border border-line bg-white px-2 py-1">
+                {algorithm.version} · {algorithm.dataVersion}
+              </span>
+            ) : null}
+            <span className="rounded border border-line bg-white px-2 py-1">保存 {formatSavedTime(savedAt)}</span>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded border border-line bg-background p-3">
+            <p className="text-sm text-muted">志愿总数</p>
+            <p className="mt-1 text-xl font-semibold">{report.metrics.total}</p>
+          </div>
+          <div className="rounded border border-line bg-background p-3">
+            <p className="text-sm text-muted">冲高数量</p>
+            <p className="mt-1 text-xl font-semibold">{report.metrics.reachOrHighRiskCount}</p>
+          </div>
+          <div className="rounded border border-line bg-background p-3">
+            <p className="text-sm text-muted">保底数量</p>
+            <p className="mt-1 text-xl font-semibold">{report.metrics.safetyCount}</p>
+          </div>
+          <div className="rounded border border-line bg-background p-3">
+            <p className="text-sm text-muted">最高学费</p>
+            <p className="mt-1 text-xl font-semibold">{formatNumber(report.metrics.maxKnownTuition)}</p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="grid max-h-[38rem] gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+            {report.issues.length ? (
+              report.issues.map((issue) => (
+                <article className={`rounded border p-3 ${getReportSeverityClass(issue.severity)}`} key={issue.code}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold">{issue.title}</h3>
+                      <p className="mt-1 text-sm leading-6">{issue.message}</p>
+                    </div>
+                    <span className="rounded border border-current/30 px-2 py-0.5 text-xs font-semibold">
+                      {issue.severity === "danger" ? "重点调整" : issue.severity === "warning" ? "需要复核" : "提示"}
+                    </span>
+                  </div>
+                  {issue.evidence.length ? (
+                    <div className="mt-3 grid max-h-56 gap-2 overflow-y-auto pr-1 text-xs leading-5 [scrollbar-gutter:stable]">
+                      {issue.evidence.map((item) => (
+                        <div className="rounded border border-current/20 bg-white/60 px-3 py-2" key={item.planKey}>
+                          <p className="font-semibold">
+                            {item.collegeName} {item.groupCode} · {item.tierLabel}
+                          </p>
+                          <p className="mt-1 break-words">{item.reasons.join("；")}</p>
+                          {item.majorNames.length ? <p className="mt-1 break-words">{item.majorNames.join("、")}</p> : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              ))
+            ) : (
+              <div className="rounded border border-success bg-success-soft p-4 text-sm leading-6 text-success">
+                未触发滑档、保底不足、排斥专业、高学费或低置信度风险。
+              </div>
+            )}
+          </div>
+
+          <div className="rounded border border-line bg-background p-3">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <ListChecks aria-hidden className="h-4 w-4 text-accent" />
+              调整建议
+            </div>
+            <div className="mt-3 grid max-h-72 gap-2 overflow-y-auto pr-1 text-sm leading-6 text-muted [scrollbar-gutter:stable]">
+              {report.actionItems.map((item) => (
+                <p className="rounded border border-line bg-white px-3 py-2" key={item}>
+                  {item}
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function CandidateProfileWorkspace() {
   const [targetYear, setTargetYear] = useState(2025);
   const [firstChoiceSubject, setFirstChoiceSubject] = useState<FirstChoiceSubject>("physics");
@@ -995,10 +1260,14 @@ export function CandidateProfileWorkspace() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [volunteerPlanItems, setVolunteerPlanItems] = useState<RecommendationItem[]>([]);
   const [volunteerPlanProfile, setVolunteerPlanProfile] = useState<RecommendationResult["profile"] | null>(null);
+  const [volunteerPlanPreferences, setVolunteerPlanPreferences] =
+    useState<StoredVolunteerPlanPreferences | null>(null);
+  const [volunteerPlanAlgorithm, setVolunteerPlanAlgorithm] = useState<RecommendationResult["algorithm"] | null>(null);
   const [volunteerPlanSavedAt, setVolunteerPlanSavedAt] = useState<string | null>(null);
   const [volunteerPlanMessage, setVolunteerPlanMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const recommendationTopScrollRef = useRef<HTMLDivElement>(null);
   const recommendationTableScrollRef = useRef<HTMLDivElement>(null);
 
@@ -1009,11 +1278,28 @@ export function CandidateProfileWorkspace() {
         if (!rawDraft) return;
 
         const draft: unknown = JSON.parse(rawDraft);
-        if (!isStoredVolunteerPlanDraft(draft)) return;
+        if (!isStoredVolunteerPlanDraft<RecommendationItem, RecommendationResult["profile"], RecommendationResult["algorithm"]>(draft)) {
+          return;
+        }
 
         setVolunteerPlanItems(draft.items.slice(0, VOLUNTEER_PLAN_LIMIT));
         setVolunteerPlanProfile(draft.profile ?? null);
+        setVolunteerPlanPreferences(draft.preferences ?? null);
+        setVolunteerPlanAlgorithm(draft.algorithm ?? null);
         setVolunteerPlanSavedAt(draft.savedAt);
+
+        if (draft.preferences?.tuitionLimit) {
+          setTuitionLimit(String(draft.preferences.tuitionLimit));
+        }
+        if (draft.preferences?.preferredCities?.length) {
+          setPreferredCities(draft.preferences.preferredCities.join(" "));
+        }
+        if (draft.preferences?.preferredMajorCategories?.length) {
+          setPreferredMajorCategories(draft.preferences.preferredMajorCategories.join(" "));
+        }
+        if (draft.preferences?.rejectedMajorCategories?.length) {
+          setRejectedMajorCategories(draft.preferences.rejectedMajorCategories.join(" "));
+        }
       } catch {
         setVolunteerPlanMessage("已保存方案读取失败，可重新保存当前方案");
       }
@@ -1031,6 +1317,16 @@ export function CandidateProfileWorkspace() {
     [secondChoiceSubjects],
   );
 
+  const currentVolunteerPlanPreferences = useMemo<StoredVolunteerPlanPreferences>(
+    () => ({
+      tuitionLimit: parseTuitionLimit(tuitionLimit),
+      preferredCities: splitTextInput(preferredCities),
+      preferredMajorCategories: splitTextInput(preferredMajorCategories),
+      rejectedMajorCategories: splitTextInput(rejectedMajorCategories),
+    }),
+    [preferredCities, preferredMajorCategories, rejectedMajorCategories, tuitionLimit],
+  );
+
   const selectedItem = useMemo(() => {
     const items = [...(result?.items ?? []), ...volunteerPlanItems];
     if (!items.length) return null;
@@ -1046,6 +1342,17 @@ export function CandidateProfileWorkspace() {
   const volunteerPlanAnalysis = useMemo(
     () => analyzeVolunteerPlan(volunteerPlanItems.map(toVolunteerPlanReference)),
     [volunteerPlanItems],
+  );
+
+  const activeVolunteerPlanPreferences = volunteerPlanPreferences ?? currentVolunteerPlanPreferences;
+
+  const volunteerRiskReport = useMemo(
+    () =>
+      buildVolunteerRiskReport(volunteerPlanItems.map(toVolunteerRiskReportItem), {
+        profile: volunteerPlanProfile ?? result?.profile ?? null,
+        preferences: activeVolunteerPlanPreferences,
+      }),
+    [activeVolunteerPlanPreferences, result?.profile, volunteerPlanItems, volunteerPlanProfile],
   );
 
   const tierCountTotal = useMemo(() => {
@@ -1090,6 +1397,11 @@ export function CandidateProfileWorkspace() {
     setVolunteerPlanSavedAt(null);
   }
 
+  function markVolunteerPlanPreferencesDirty() {
+    setVolunteerPlanPreferences(null);
+    markVolunteerPlanDirty();
+  }
+
   function addToVolunteerPlan(item: RecommendationItem) {
     const decision = canAddVolunteerPlanItem(
       volunteerPlanItems.map(toVolunteerPlanReference),
@@ -1103,6 +1415,8 @@ export function CandidateProfileWorkspace() {
 
     setVolunteerPlanItems((current) => [...current, item]);
     setVolunteerPlanProfile(result?.profile ?? volunteerPlanProfile);
+    setVolunteerPlanPreferences(currentVolunteerPlanPreferences);
+    setVolunteerPlanAlgorithm(result?.algorithm ?? volunteerPlanAlgorithm);
     setSelectedKey(getItemKey(item));
     setVolunteerPlanMessage(`${item.college.collegeName} 已加入志愿表`);
     markVolunteerPlanDirty();
@@ -1138,6 +1452,8 @@ export function CandidateProfileWorkspace() {
 
     setVolunteerPlanItems(nextItems);
     setVolunteerPlanProfile(result.profile);
+    setVolunteerPlanPreferences(currentVolunteerPlanPreferences);
+    setVolunteerPlanAlgorithm(result.algorithm);
     setSelectedKey(firstAddedKey);
     setVolunteerPlanMessage(`已加入 ${addedCount} 个推荐项`);
     markVolunteerPlanDirty();
@@ -1175,26 +1491,66 @@ export function CandidateProfileWorkspace() {
     }
 
     const savedAt = new Date().toISOString();
-    const draft: StoredVolunteerPlanDraft = {
-      version: 1,
+    const draft: VolunteerPlanDraft = {
+      version: 2,
       savedAt,
       profile: volunteerPlanProfile ?? result?.profile ?? null,
       items: volunteerPlanItems,
+      preferences: activeVolunteerPlanPreferences,
+      algorithm: volunteerPlanAlgorithm ?? result?.algorithm ?? null,
     };
 
     try {
       window.localStorage.setItem(volunteerPlanStorageKey, JSON.stringify(draft));
       setVolunteerPlanSavedAt(savedAt);
       setVolunteerPlanProfile(draft.profile);
+      setVolunteerPlanPreferences(draft.preferences ?? null);
+      setVolunteerPlanAlgorithm(draft.algorithm ?? null);
       setVolunteerPlanMessage("方案已保存到本机浏览器");
     } catch {
       setVolunteerPlanMessage("方案保存失败，请减少条目后重试");
     }
   }
 
+  function buildVolunteerReportPdfPayload(): VolunteerReportPdfPayload {
+    return {
+      savedAt: volunteerPlanSavedAt,
+      profile: volunteerPlanProfile ?? result?.profile ?? null,
+      preferences: activeVolunteerPlanPreferences,
+      algorithm: volunteerPlanAlgorithm ?? result?.algorithm ?? null,
+      report: volunteerRiskReport,
+      planItems: volunteerPlanItems.map(toVolunteerReportPdfPlanItem),
+    };
+  }
+
+  async function exportVolunteerReportPdf() {
+    if (!volunteerPlanItems.length) {
+      setVolunteerPlanMessage("志愿表为空，暂不能导出 PDF");
+      return;
+    }
+
+    setIsExportingPdf(true);
+    setVolunteerPlanMessage(null);
+
+    try {
+      await downloadVolunteerReportPdf(buildVolunteerReportPdfPayload());
+      setVolunteerPlanMessage("PDF 已生成，浏览器将开始下载");
+    } catch (exportError) {
+      const message =
+        exportError instanceof Error && exportError.message === "CJK_FONT_NOT_FOUND"
+          ? "PDF 导出失败：服务器未找到中文字体"
+          : "PDF 导出失败，请稍后重试";
+      setVolunteerPlanMessage(message);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }
+
   function clearVolunteerPlan() {
     setVolunteerPlanItems([]);
     setVolunteerPlanProfile(null);
+    setVolunteerPlanPreferences(null);
+    setVolunteerPlanAlgorithm(null);
     setVolunteerPlanSavedAt(null);
     setVolunteerPlanMessage("志愿表已清空");
     window.localStorage.removeItem(volunteerPlanStorageKey);
@@ -1205,7 +1561,7 @@ export function CandidateProfileWorkspace() {
     setIsPending(true);
     setError(null);
 
-    const parsedTuitionLimit = tuitionLimit.trim() ? Number(tuitionLimit) : undefined;
+    const parsedTuitionLimit = parseTuitionLimit(tuitionLimit);
 
     try {
       const response = await fetch("/api/recommendations", {
@@ -1260,9 +1616,9 @@ export function CandidateProfileWorkspace() {
       <div className="mx-auto grid w-full max-w-[1500px] gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[380px_minmax(0,1fr)] lg:px-8">
         <section className="rounded-lg border border-line bg-panel p-5 shadow-sm lg:sticky lg:top-5 lg:max-h-[calc(100vh-2.5rem)] lg:self-start lg:overflow-y-auto lg:[scrollbar-gutter:stable]">
           <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-accent">第 7 周</p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-normal">推荐与志愿表工作台</h1>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-accent">安徽高考志愿助手</p>
+              <h1 className="mt-2 text-2xl font-semibold tracking-normal">志愿推荐与风险工作台</h1>
               <p className="mt-2 text-sm leading-6 text-muted">安徽普通类本科批 · 院校专业组方案</p>
             </div>
             <ShieldCheck aria-hidden className="h-6 w-6 text-accent" />
@@ -1378,7 +1734,10 @@ export function CandidateProfileWorkspace() {
                   className="h-11 rounded border border-line bg-white px-3 text-sm outline-none focus:border-accent"
                   placeholder="例如：合肥 南京"
                   value={preferredCities}
-                  onChange={(event) => setPreferredCities(event.target.value)}
+                  onChange={(event) => {
+                    setPreferredCities(event.target.value);
+                    markVolunteerPlanPreferencesDirty();
+                  }}
                 />
               </label>
               <label className="grid gap-2 text-sm font-medium">
@@ -1387,7 +1746,10 @@ export function CandidateProfileWorkspace() {
                   className="h-11 rounded border border-line bg-white px-3 text-sm outline-none focus:border-accent"
                   placeholder="例如：计算机 软件"
                   value={preferredMajorCategories}
-                  onChange={(event) => setPreferredMajorCategories(event.target.value)}
+                  onChange={(event) => {
+                    setPreferredMajorCategories(event.target.value);
+                    markVolunteerPlanPreferencesDirty();
+                  }}
                 />
               </label>
               <label className="grid gap-2 text-sm font-medium">
@@ -1396,7 +1758,10 @@ export function CandidateProfileWorkspace() {
                   className="h-11 rounded border border-line bg-white px-3 text-sm outline-none focus:border-accent"
                   placeholder="例如：护理 土木"
                   value={rejectedMajorCategories}
-                  onChange={(event) => setRejectedMajorCategories(event.target.value)}
+                  onChange={(event) => {
+                    setRejectedMajorCategories(event.target.value);
+                    markVolunteerPlanPreferencesDirty();
+                  }}
                 />
               </label>
               <label className="grid gap-2 text-sm font-medium">
@@ -1406,7 +1771,10 @@ export function CandidateProfileWorkspace() {
                   inputMode="numeric"
                   placeholder="可留空"
                   value={tuitionLimit}
-                  onChange={(event) => setTuitionLimit(event.target.value)}
+                  onChange={(event) => {
+                    setTuitionLimit(event.target.value);
+                    markVolunteerPlanPreferencesDirty();
+                  }}
                 />
               </label>
             </div>
@@ -1483,10 +1851,10 @@ export function CandidateProfileWorkspace() {
           <div className="rounded-lg border border-line bg-panel p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold text-accent">第 7 周工作台</p>
-                <h2 className="mt-2 text-2xl font-semibold">生成推荐并整理志愿表</h2>
+                <p className="text-sm font-semibold text-accent">上线演示版</p>
+                <h2 className="mt-2 text-2xl font-semibold">生成推荐、整理志愿表和风险报告</h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-                  展示院校专业组分档、参考位次、风险标签和推荐理由；推荐项可加入志愿表，并在表内删除、排序、保存。
+                  汇总滑档、保底不足、排斥专业、高学费和低置信度风险，形成可解释的方案报告。
                 </p>
               </div>
               {result ? (
@@ -1538,12 +1906,25 @@ export function CandidateProfileWorkspace() {
           <VolunteerPlanEditor
             analysis={volunteerPlanAnalysis}
             items={volunteerPlanItems}
+            isExportingPdf={isExportingPdf}
             message={volunteerPlanMessage}
             profile={volunteerPlanProfile ?? result?.profile ?? null}
             savedAt={volunteerPlanSavedAt}
             onClear={clearVolunteerPlan}
+            onExportPdf={exportVolunteerReportPdf}
             onMove={moveVolunteerPlan}
             onRemove={removeFromVolunteerPlan}
+            onSave={saveVolunteerPlan}
+          />
+
+          <VolunteerRiskReportPanel
+            algorithm={volunteerPlanAlgorithm ?? result?.algorithm ?? null}
+            hasItems={volunteerPlanItems.length > 0}
+            isExportingPdf={isExportingPdf}
+            profile={volunteerPlanProfile ?? result?.profile ?? null}
+            report={volunteerRiskReport}
+            savedAt={volunteerPlanSavedAt}
+            onExportPdf={exportVolunteerReportPdf}
             onSave={saveVolunteerPlan}
           />
 

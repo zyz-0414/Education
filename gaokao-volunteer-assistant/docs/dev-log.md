@@ -71,3 +71,24 @@
 - 2023 安徽改革前投档线已作为旧文理科院校级参考进入推荐模型：理科映射物理类，文科映射历史类，再选科目按不限处理。
 - 推荐历史匹配改为 2024/2025 专业组优先精确匹配、缺失时使用同院校相近专业组补充 + 2023 院校名称快照匹配，避免把补充参考误认为同组线。
 - `historicalRanks` 增加口径说明，推荐表格和右侧详情面板均展示近三年参考位次。
+
+## 2026-06-02 第 8 周风险检测和报告
+
+- 新增 `src/lib/volunteer-risk-report.ts`，汇总滑档、保底不足、排斥专业、高学费和低置信度风险。
+- 新增首页简版方案报告摘要，基于当前志愿表实时展示方案状态、关键指标、风险证据和调整建议。
+- 新增 `/report` 简版报告页面，从浏览器本地保存的志愿方案读取画像、偏好、算法版本和数据版本后生成报告。
+- 风险证据和调整建议改为完整展示，数量较多时使用滚动区域，不再只显示前几条。
+- 新增 PDF 导出入口，志愿表编辑器和 `/report` 页面均可导出包含志愿表、风险检测、调整建议和数据口径的 PDF。
+- 志愿方案本地保存格式扩展为 version 2，新增偏好快照和算法快照；旧版草稿仍可读取。
+- 新增 `tests/week8-risk-report.ts`、`npm run test:week8` 和 `npm run verify:week8`。
+- 新增 `docs/week8-risk-report.md`，记录第 8 周完成范围、检测口径、报告结构和验收命令。
+
+## 2026-06-03 第 9 周响应式适配和上线准备
+
+- 页面正式收口为“安徽高考志愿助手”，将首页和报告页中的开发周次标签改为产品化文案。
+- 新增 `vercel.json`，Vercel 构建命令固定为 `npm run vercel-build`。
+- `npm run build` 改为先执行 `prisma generate` 再执行 `next build`。
+- 新增生产迁移命令 `npm run db:deploy` 和第 9 周验收命令 `npm run verify:week9`。
+- `.env.example` 已补充 Vercel + Neon PostgreSQL 部署说明。
+- PDF 导出已加入项目内中文字体 `public/fonts/NotoSansCJKsc-Regular.otf`，避免线上 Linux 环境缺少中文字体。
+- 新增 `docs/week9-launch.md`，记录上线部署步骤、环境变量、浏览器验收清单、演示样例和公开说明。
