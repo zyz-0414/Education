@@ -45,7 +45,7 @@ function getProfileFilePart(profile: VolunteerRiskReportProfile | undefined) {
 }
 
 export function getVolunteerReportPdfFileName(payload: VolunteerReportPdfPayload) {
-  return `安徽高考志愿方案报告-${getProfileFilePart(payload.profile)}.pdf`;
+  return `皖志愿方案报告-${getProfileFilePart(payload.profile)}.pdf`;
 }
 
 export async function downloadVolunteerReportPdf(payload: VolunteerReportPdfPayload) {

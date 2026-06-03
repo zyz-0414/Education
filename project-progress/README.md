@@ -10,9 +10,9 @@
 - 双击启动入口：`D:\education\start-gaokao-assistant.bat`
 - 数据库自动启动：优先启动本机 PostgreSQL 服务 `postgresql*`，找不到服务时再尝试 Docker Desktop。
 
-## 前九周验收结论
+## 前十周验收结论
 
-第 0-9 周任务已全部完成并通过本机验证。
+第 0-10 周任务已全部完成并通过本机验证。
 
 - `npm run verify:week8` 已通过，覆盖 lint、Prisma schema、CSV 表头、CSV 完整性、第 4 周规则烟测、第 5 周推荐算法测试、第 6 周数据守卫测试、第 6 周生产构建、第 7 周志愿表规则测试和第 8 周风险报告测试。
 - `npm run verify:week9` 已新增，用于串联第 0-8 周验收和生产构建。
@@ -104,7 +104,22 @@
 - 已通过 Vercel Marketplace 创建 Neon 数据库资源 `gaokao-volunteer-assistant-db`，区域为 `sin1`，计划为 `free_v3`。
 - 已在 Neon 生产库完成 Prisma 迁移和 cleaned CSV 导入。
 - 已完成线上冒烟：首页 `200`、推荐 API 可返回结果、PDF 导出接口返回 `application/pdf`。
-- 第 9 周仍不做账号系统、服务端方案持久化、支付、专家审核、分享链接、AI 问答、PWA 和扩省功能。
+- 已完成第 10 周回测校准：新增 `npm run test:week10` 和 `npm run verify:week10`，用 2024 专业组线和 2023 旧文理科院校线预测 2025 实际投档线。
+- 第 10 周回测可比样本 232 组，整体中位绝对误差 8.3%，81.9% 的样本落在 20% 误差内，89.2% 落在 30% 误差内；当前冲稳保阈值保留为第一版 Demo 口径。
+- 第 10 周仍不做账号系统、服务端方案持久化、支付、专家审核、分享链接、AI 问答、PWA 和扩省功能。
+
+## 2026-06-03 第十周回测校准和作品集收尾
+
+- 已新增第 10 周回测脚本：`D:\education\gaokao-volunteer-assistant\tests\week10-backtest.ts`。
+- 已新增命令：`npm run test:week10` 和 `npm run verify:week10`。
+- 回测严格使用院校名称快照隔离跨年匹配，避免裸院校代码和专业组号复用污染。
+- 本机回测结果：
+  - 物理类可比样本 141 组，中位绝对误差 9.1%，80.9% 落在 20% 误差内；
+  - 历史类可比样本 91 组，中位绝对误差 7.1%，83.5% 落在 20% 误差内；
+  - 合计可比样本 232 组，中位绝对误差 8.3%，P75 绝对误差 14.4%，89.2% 落在 30% 误差内。
+- 已新增第 10 周收尾文档：`D:\education\gaokao-volunteer-assistant\docs\week10-backtest-wrap-up.md`。
+- 已同步 README、算法文档、开发日志和 release notes。
+- 第一版进入可演示、可部署、可作为作品集展示的收尾状态。
 
 ## 2026-06-02 数据增强与推荐数量修复
 
@@ -251,16 +266,39 @@
   - `npm run test:week8`
   - `npm run verify:week8`
 
+### 第 9 周：响应式适配和上线发布
+
+- 已将页面收口为正式产品文案“安徽高考志愿助手”。
+- 已新增 Vercel 部署配置和 `.vercelignore`。
+- 已新增生产迁移命令 `npm run db:deploy`。
+- 已新增第 9 周验收命令 `npm run verify:week9`。
+- 已完成 Vercel + Neon PostgreSQL Production 发布。
+- 已完成线上首页、推荐 API 和 PDF 导出冒烟。
+- 已新增第 9 周上线说明文档：
+  - `docs/week9-launch.md`
+
+### 第 10 周：回测校准和作品集收尾
+
+- 已新增 2024 预测 2025 回测脚本。
+- 已新增第 10 周验收命令：
+  - `npm run test:week10`
+  - `npm run verify:week10`
+- 已完成当前冲稳保阈值校准说明。
+- 已确认第一版继续保留高危默认隐藏和低置信度提示。
+- 已补充作品集展示说明和演示路径。
+- 已新增第 10 周收尾文档：
+  - `docs/week10-backtest-wrap-up.md`
+
 ## 后续限制和待办
 
 ### 需要评估事项
 
-- npm 生产依赖审查仍有 2 个 `moderate` 提示，来源为 Next.js 依赖链中的 PostCSS advisory。当前 `npm audit fix` 给出的修复建议会触发不合理的大版本/降级动作，暂不强制处理；第 10 周建议结合 Next.js 官方版本和兼容性单独评估。
+- npm 生产依赖审查仍有 2 个 `moderate` 提示，来源为 Next.js 依赖链中的 PostCSS advisory。当前 `npm audit fix` 给出的修复建议会触发不合理的大版本/降级动作，暂不强制处理；后续建议结合 Next.js 官方版本和兼容性单独评估。
 - 线上地址当前使用 Vercel 默认域名 `https://gaokao-volunteer-assistant.vercel.app`。如果部分网络访问 `vercel.app` 较慢或不稳定，后续建议绑定自有域名。
 - 线上数据库当前使用 Vercel Marketplace 创建的 Neon `free_v3` 资源，适合第一版 Demo；如果访问量、冷启动或连接数上升，需要评估 Neon 计划升级和连接池策略。
 - 根目录 `D:\education\data` 是本机采集资料池，包含 72 个第三方 Excel/JPG 文件，约 91.8MB，其中部分文件名显示为商业/试看资料。已在根目录 `.gitignore` 中忽略 `/data/`，不随本次公开 GitHub 推送上传；如需入库，必须先确认授权、体积和数据来源登记。
 - 当前线上仍使用浏览器 `localStorage` 保存志愿方案，不支持跨设备同步。后续如需多人演示、分享链接或用户账号，需要评估服务端方案持久化。
-- 第 10 周建议补充回测：用 2024 数据预测 2025，校准冲、稳、保阈值，并形成作品集截图和说明。
+- 第 10 周已补充回测、阈值校准和作品集说明；后续重点转向 2026 数据更新、章程规则结构化和方案保存能力。
 
 ### 本机环境说明
 
@@ -278,16 +316,16 @@
 - 2017-2023 往年数据是旧文理科/院校专业口径，暂不直接混入专业组推荐模型。
 - 招生章程风险规则目前还没有结构化导入。
 
-这些是第一版后续数据增强事项，不阻塞第 0-9 周验收。
+这些是第一版后续数据增强事项，不阻塞第 0-10 周验收。
 
-### 第 9 周之后功能
+### 第 10 周之后功能
 
-- 第 10 周建议进入回测和作品集打磨：用 2024 数据预测 2025，校准冲稳保阈值，补充演示截图和作品集说明。
+- 后续如继续迭代，建议优先处理：2026 正式招生计划导入、招生章程结构化、服务端方案保存、分享链接、多方案对比和国内低成本部署方案评估。
 
 ## 下一步建议
 
 1. 如需命令行直接使用 `psql`，把 `E:\PostqreSQL\bin` 加入系统 PATH。
-2. 第 0-9 周已经闭环；后续进入第 10 周：回测、阈值校准和作品集说明。
+2. 第 0-10 周已经闭环；后续进入 2026 数据更新、章程规则结构化、服务端方案保存和国内低成本部署评估。
 
 ## 2026-06-02 推荐算法审查与上传收口
 
@@ -316,6 +354,8 @@ npm run verify:week7
 npm run test:week8
 npm run verify:week8
 npm run verify:week9
+npm run test:week10
+npm run verify:week10
 npm run verify:data
 npm run data:validate
 npm run data:import

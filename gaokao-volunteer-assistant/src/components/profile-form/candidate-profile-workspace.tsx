@@ -1158,7 +1158,7 @@ function VolunteerRiskReportPanel({
           <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted">
             {algorithm ? (
               <span className="rounded border border-line bg-white px-2 py-1">
-                {algorithm.version} · {algorithm.dataVersion}
+                参考年份 {algorithm.referenceYears.join("、")}
               </span>
             ) : null}
             <span className="rounded border border-line bg-white px-2 py-1">保存 {formatSavedTime(savedAt)}</span>
@@ -1617,11 +1617,21 @@ export function CandidateProfileWorkspace() {
         <section className="rounded-lg border border-line bg-panel p-5 shadow-sm lg:sticky lg:top-5 lg:max-h-[calc(100vh-2.5rem)] lg:self-start lg:overflow-y-auto lg:[scrollbar-gutter:stable]">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-accent">安徽高考志愿助手</p>
+              <p className="text-sm font-semibold text-accent">皖志愿</p>
               <h1 className="mt-2 text-2xl font-semibold tracking-normal">志愿推荐与风险工作台</h1>
               <p className="mt-2 text-sm leading-6 text-muted">安徽普通类本科批 · 院校专业组方案</p>
             </div>
-            <ShieldCheck aria-hidden className="h-6 w-6 text-accent" />
+            <div className="flex shrink-0 items-center gap-2">
+              <Link
+                className="inline-flex h-8 items-center gap-1.5 rounded border border-line bg-background px-2.5 text-xs font-semibold text-muted transition hover:border-accent hover:text-accent"
+                href="/guide"
+                title="查看使用说明"
+              >
+                <BookOpenCheck aria-hidden className="h-3.5 w-3.5" />
+                使用说明
+              </Link>
+              <ShieldCheck aria-hidden className="h-6 w-6 text-accent" />
+            </div>
           </div>
 
           <form className="mt-6 grid gap-5" onSubmit={handleSubmit}>
@@ -1851,17 +1861,12 @@ export function CandidateProfileWorkspace() {
           <div className="rounded-lg border border-line bg-panel p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold text-accent">上线演示版</p>
+                <p className="text-sm font-semibold text-accent">皖志愿</p>
                 <h2 className="mt-2 text-2xl font-semibold">生成推荐、整理志愿表和风险报告</h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
                   汇总滑档、保底不足、排斥专业、高学费和低置信度风险，形成可解释的方案报告。
                 </p>
               </div>
-              {result ? (
-                <div className="rounded border border-line bg-background px-3 py-2 text-sm text-muted">
-                  {result.algorithm.version} · {result.algorithm.dataVersion}
-                </div>
-              ) : null}
             </div>
           </div>
 

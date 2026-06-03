@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "安徽高考志愿助手",
-  description: "安徽普通类本科批志愿填报辅助系统",
+  title: "皖志愿",
+  description: "安徽普通类本科批志愿填报辅助工具",
 };
 
 export default function RootLayout({

@@ -92,3 +92,12 @@
 - `.env.example` 已补充 Vercel + Neon PostgreSQL 部署说明。
 - PDF 导出已加入项目内中文字体 `public/fonts/NotoSansCJKsc-Regular.otf`，避免线上 Linux 环境缺少中文字体。
 - 新增 `docs/week9-launch.md`，记录上线部署步骤、环境变量、浏览器验收清单、演示样例和公开说明。
+
+## 2026-06-03 第 10 周回测校准和作品集收尾
+
+- 新增 `tests/week10-backtest.ts`，用 2024 专业组线和 2023 旧文理科院校线预测 2025 实际投档线。
+- 新增 `npm run test:week10` 和 `npm run verify:week10`。
+- 回测口径严格使用院校名称快照隔离，避免裸院校代码和专业组号跨年复用污染。
+- 本机回测结果：可比样本 232 组，整体中位绝对误差 8.3%，P75 绝对误差 14.4%，81.9% 的样本落在 20% 误差内，89.2% 落在 30% 误差内。
+- 第 10 周结论：第一版继续保留当前冲稳保阈值，高危项默认隐藏；推荐结果仍明确标注数据版本、低置信度和风险说明。
+- 新增 `docs/week10-backtest-wrap-up.md`，并同步 README、算法文档、release notes 和总进度记录。

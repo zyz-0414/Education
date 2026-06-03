@@ -148,7 +148,7 @@ function getExportFileName(payload: VolunteerReportPdfPayload) {
   const year = profile?.targetYear ?? "年份待补";
   const rank = typeof profile?.rank === "number" ? `位次${profile.rank}` : "位次待补";
 
-  return sanitizeFileNamePart(`安徽高考志愿方案报告-${year}-${subject}-${rank}.pdf`);
+  return sanitizeFileNamePart(`皖志愿方案报告-${year}-${subject}-${rank}.pdf`);
 }
 
 function findFontPath() {
@@ -287,7 +287,7 @@ function drawHeader(doc: PDFKit.PDFDocument, payload: VolunteerReportPdfPayload,
 
   doc.rect(0, 0, doc.page.width, 5).fill(ACCENT_COLOR);
   doc.roundedRect(PAGE_MARGIN, y, 5, 56, 2).fill(ACCENT_COLOR);
-  writeText(doc, "安徽高考志愿方案报告", PAGE_MARGIN + 16, y + 2, {
+  writeText(doc, "皖志愿方案报告", PAGE_MARGIN + 16, y + 2, {
     fontName: fonts.bold,
     fontSize: 23,
     color: TEXT_COLOR,
@@ -586,8 +586,8 @@ export async function renderVolunteerReportPdf(payload: VolunteerReportPdfPayloa
     },
     size: "A4",
     info: {
-      Title: "安徽高考志愿方案报告",
-      Author: "安徽优先高考志愿填报系统",
+      Title: "皖志愿方案报告",
+      Author: "皖志愿",
     },
   });
   const chunks: Buffer[] = [];
@@ -674,14 +674,12 @@ export async function renderVolunteerReportPdf(payload: VolunteerReportPdfPayloa
   drawSectionTitle(doc, "五、调整建议", fonts);
   drawActionItems(doc, payload.report.actionItems, fonts);
 
-  drawSectionTitle(doc, "六、数据口径", fonts);
+  drawSectionTitle(doc, "六、参考依据", fonts);
   drawParagraph(
     doc,
     payload.algorithm
-      ? `${payload.algorithm.version ?? "算法版本待补"}；${payload.algorithm.dataVersion ?? "数据版本待补"}；参考年份 ${
-          payload.algorithm.referenceYears?.join("、") ?? "暂无"
-        }。推荐结果只作概率参考，不构成录取承诺。`
-      : "暂无算法版本快照。推荐结果只作概率参考，不构成录取承诺。",
+      ? `参考年份 ${payload.algorithm.referenceYears?.join("、") ?? "暂无"}。推荐结果只作概率参考，不构成录取承诺。`
+      : "暂无参考年份。推荐结果只作概率参考，不构成录取承诺。",
     {
       fontName: fonts.normal,
       fontSize: 9,

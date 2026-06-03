@@ -307,7 +307,7 @@ export function VolunteerReportPage() {
         <section className="rounded-lg border border-line bg-panel p-5 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-accent">安徽高考志愿助手</p>
+              <p className="text-sm font-semibold text-accent">皖志愿</p>
               <h1 className="mt-2 text-3xl font-semibold">志愿方案风险报告</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">{report.conclusion}</p>
             </div>
@@ -403,16 +403,12 @@ export function VolunteerReportPage() {
             <section className="rounded-lg border border-line bg-panel p-4 text-sm leading-6 text-muted shadow-sm">
               <div className="mb-3 flex items-center gap-2 font-semibold text-foreground">
                 <Database aria-hidden className="h-5 w-5 text-info" />
-                数据口径
+                参考依据
               </div>
               {draft.algorithm ? (
-                <>
-                  <p>{draft.algorithm.version}</p>
-                  <p>{draft.algorithm.dataVersion}</p>
-                  <p>参考年份 {draft.algorithm.referenceYears.join("、")}</p>
-                </>
+                <p>参考年份 {draft.algorithm.referenceYears.join("、")}</p>
               ) : (
-                <p>暂无算法版本快照。</p>
+                <p>暂无参考年份。</p>
               )}
               <p className="mt-3">推荐结果只做概率参考，不构成录取承诺。</p>
             </section>
