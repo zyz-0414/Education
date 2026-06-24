@@ -507,6 +507,72 @@ def collect_2025_plans(
     return list(rows.values())
 
 
+def collect_2026_plans(
+    path: Path,
+    groups: dict[tuple[object, ...], dict[str, object]],
+    colleges: dict[str, dict[str, object]],
+    majors: dict[tuple[str, str, str], dict[str, object]],
+) -> list[dict[str, object]]:
+    rows: dict[tuple[object, ...], dict[str, object]] = {}
+    sid = source_id("enrollment_plan", 2026)
+    for item in iter_dict_rows(path, {"年份", "生源地", "科类", "批次", "院校代码", "专业组代码", "专业代码"}):
+        if normalize_batch(item.get("批次")) != BATCH_CODE:
+            continue
+        year = parse_int(item.get("年份"))
+        if year != 2026:
+            continue
+
+        subject_track = normalize_subject_track(item.get("科类"))
+        college_code = normalize_code(item.get("院校代码"), 4)
+        group_code = normalize_code(item.get("专业组代码"), 3)
+        major_code = normalize_code(item.get("专业代码"), 2)
+        major_name = norm(item.get("专业名称"))
+        college_name = norm(item.get("院校名称"))
+        plan_count = parse_int(item.get("计划人数"))
+        if not all([college_code, group_code, major_code, major_name, college_name]) or plan_count is None:
+            continue
+
+        requirement = normalize_subject_requirement(item.get("选科要求"))
+        row = {
+            "year": 2026,
+            "province_code": PROVINCE_CODE,
+            "batch_code": BATCH_CODE,
+            "subject_track": subject_track,
+            "college_code": college_code,
+            "group_code": group_code,
+            "major_code": major_code,
+            "major_name": major_name,
+            "subject_requirement": requirement,
+            "plan_count": plan_count,
+            "tuition": parse_int(item.get("学费")) or "",
+            "duration": "四年",
+            "campus": "",
+            "note": norm(item.get("专业备注")),
+            "source_id": sid,
+        }
+        key = group_key(row) + (major_code,)
+        if key in rows:
+            rows[key]["plan_count"] = int(rows[key]["plan_count"]) + plan_count
+        else:
+            rows[key] = row
+
+        colleges[college_code] = make_college(college_code, college_name, sid)
+        majors.setdefault(
+            (major_code, major_name, sid),
+            {
+                "major_code": major_code,
+                "major_name": major_name,
+                "major_category": "",
+                "degree_category": "本科",
+                "duration": "四年",
+                "notes": "安徽2026招生计划省编专业代码，非国家标准专业代码",
+                "source_id": sid,
+            },
+        )
+        add_group(groups, row, college_name, requirement, "2026招生计划", sid)
+    return list(rows.values())
+
+
 def collect_2024_plans(
     path: Path,
     groups: dict[tuple[object, ...], dict[str, object]],
@@ -826,6 +892,7 @@ def main() -> None:
         "score_2025_history": find_one(external_root, "安徽2025一分一段表（历史）.xlsx"),
         "plan_2024": find_one(external_root, "安徽_招生计划_2024.xlsx"),
         "plan_2025": find_one(external_root, "安徽-2025-招生计划.xlsx"),
+        "plan_2026": find_one(external_root, "新安徽-2026-招生计划【总43649】.xlsx"),
         "admission_2023": find_one(external_root, "安徽_投档线_2023.xlsx"),
         "admission_2024": find_one(external_root, "安徽_投档线_2024.xlsx"),
         "admission_2025": find_one(external_root, "安徽25年专业组投档线最新.xlsx"),
@@ -846,6 +913,7 @@ def main() -> None:
     plan_rows = []
     plan_rows.extend(collect_2024_plans(files["plan_2024"], groups, colleges, majors))
     plan_rows.extend(collect_2025_plans(files["plan_2025"], groups, colleges, majors))
+    plan_rows.extend(collect_2026_plans(files["plan_2026"], groups, colleges, majors))
 
     admission_rows = []
     admission_rows.extend(collect_2024_admissions(files["admission_2024"], groups, colleges))
@@ -859,6 +927,7 @@ def main() -> None:
         SourceSpec(source_id("score_segments", 2025), "安徽2025一分一段表（物理/历史）", files["score_2025_physics"], notes="同目录历史组文件一并解析"),
         SourceSpec(source_id("enrollment_plan", 2024), "安徽2024普通本科批招生计划", files["plan_2024"]),
         SourceSpec(source_id("enrollment_plan", 2025), "安徽2025普通本科批招生计划", files["plan_2025"]),
+        SourceSpec(source_id("enrollment_plan", 2026), "安徽2026普通本科批招生计划", files["plan_2026"], notes="仅接入普通本科批；提前批和高职专科批暂不进入第一版推荐口径"),
         SourceSpec(source_id("legacy_admission", 2023), "安徽2023普通本科批旧文理科院校投档线", files["admission_2023"], notes="改革前文理科院校级口径；本科一批/二批合并作普通本科参考"),
         SourceSpec(source_id("group_admission", 2024), "安徽2024普通本科批专业组投档线", files["admission_2024"]),
         SourceSpec(source_id("group_admission", 2025), "安徽2025普通本科批专业组投档线", files["admission_2025"]),

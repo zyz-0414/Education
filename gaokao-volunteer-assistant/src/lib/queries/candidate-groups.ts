@@ -45,6 +45,7 @@ type ScoreRankIssue = {
 };
 
 const candidatePoolLimit = 5000;
+const SCORE_SEGMENT_FALLBACK_START_YEAR = 2026;
 
 function getEligibleMajorPlans(group: CandidateGroupWithRelations, selectedSubjects: ReturnType<typeof getSelectedAnhuiSubjects>) {
   return group.majorPlans.filter((plan) =>
@@ -78,7 +79,13 @@ async function validateScoreAndRank(profile: CandidateProfile) {
 
   const issues: ScoreRankIssue[] = [];
 
-  if (!segment) {
+  if (!segment && range._min.score === null && profile.targetYear >= SCORE_SEGMENT_FALLBACK_START_YEAR) {
+    issues.push({
+      code: "SCORE_SEGMENT_YEAR_NOT_READY",
+      message: `${profile.targetYear} 年${anhuiSubjectLabels[profile.firstChoiceSubject]}类一分一段表暂未接入，已按考生填写位次生成推荐；分数仅作备注，不校验分数-位次一致性。`,
+      severity: "warning",
+    });
+  } else if (!segment) {
     issues.push({
       code: "SCORE_SEGMENT_NOT_FOUND",
       message: `${profile.targetYear} 年${anhuiSubjectLabels[profile.firstChoiceSubject]}类一分一段表中没有 ${profile.score} 分。`,

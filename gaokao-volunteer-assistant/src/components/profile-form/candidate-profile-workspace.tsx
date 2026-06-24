@@ -1240,7 +1240,7 @@ function VolunteerRiskReportPanel({
 }
 
 export function CandidateProfileWorkspace() {
-  const [targetYear, setTargetYear] = useState(2025);
+  const [targetYear, setTargetYear] = useState(2026);
   const [firstChoiceSubject, setFirstChoiceSubject] = useState<FirstChoiceSubject>("physics");
   const [secondChoiceSubjects, setSecondChoiceSubjects] = useState<SecondChoiceSubject[]>([
     "chemistry",
@@ -1642,6 +1642,7 @@ export function CandidateProfileWorkspace() {
                 value={targetYear}
                 onChange={(event) => setTargetYear(Number(event.target.value))}
               >
+                <option value={2026}>2026</option>
                 <option value={2025}>2025</option>
                 <option value={2024}>2024</option>
               </select>
@@ -1944,10 +1945,18 @@ export function CandidateProfileWorkspace() {
             <div className="grid gap-2">
               {result.scoreRankCheck.issues.map((issue) => (
                 <div
-                  className="flex gap-3 rounded border border-danger bg-danger-soft p-4 text-sm leading-6 text-danger"
+                  className={`flex gap-3 rounded border p-4 text-sm leading-6 ${
+                    issue.severity === "warning"
+                      ? "border-warning bg-warning-soft text-warning"
+                      : "border-danger bg-danger-soft text-danger"
+                  }`}
                   key={issue.code}
                 >
-                  <XCircle aria-hidden className="mt-0.5 h-5 w-5 shrink-0" />
+                  {issue.severity === "warning" ? (
+                    <AlertTriangle aria-hidden className="mt-0.5 h-5 w-5 shrink-0" />
+                  ) : (
+                    <XCircle aria-hidden className="mt-0.5 h-5 w-5 shrink-0" />
+                  )}
                   <span>{issue.message}</span>
                 </div>
               ))}
