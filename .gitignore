@@ -34,3 +34,6 @@ Thumbs.db
 
 # deployment
 .vercel/
+
+# local worktrees
+.worktrees/
