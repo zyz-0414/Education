@@ -206,3 +206,25 @@ model RecommendationRun {
 
   @@map("recommendation_run")
 }
+
+model SiteReaction {
+  key       String             @id
+  count     Int                @default(276)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  votes     SiteReactionVote[]
+
+  @@map("site_reaction")
+}
+
+model SiteReactionVote {
+  id          String       @id @default(uuid())
+  reactionKey String
+  visitorHash String
+  createdAt   DateTime     @default(now())
+  reaction    SiteReaction @relation(fields: [reactionKey], references: [key], onDelete: Cascade)
+
+  @@unique([reactionKey, visitorHash])
+  @@index([reactionKey, createdAt])
+  @@map("site_reaction_vote")
+}

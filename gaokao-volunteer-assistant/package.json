@@ -37,6 +37,8 @@
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.3",
     "clsx": "^2.1.1",
     "csv-parse": "^6.2.1",
     "lucide-react": "^1.17.0",
