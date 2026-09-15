@@ -36,7 +36,7 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   analyzeVolunteerPlan,
@@ -64,7 +64,7 @@ import {
   type StoredVolunteerPlanDraft,
   type StoredVolunteerPlanPreferences,
 } from "@/lib/volunteer-plan-storage";
-import { initialLikeState, reduceLikeState } from "@/lib/site-likes";
+import { SITE_LIKE_INITIAL_COUNT } from "@/lib/site-likes";
 
 type FirstChoiceSubject = "physics" | "history";
 type SecondChoiceSubject = "chemistry" | "biology" | "politics" | "geography";
@@ -1270,7 +1270,9 @@ export function CandidateProfileWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
-  const [likeState, dispatchLike] = useReducer(reduceLikeState, initialLikeState);
+  const [likeCount, setLikeCount] = useState(SITE_LIKE_INITIAL_COUNT);
+  const [likeStatus, setLikeStatus] = useState<"loading" | "ready" | "failed">("loading");
+  const [likeMessage, setLikeMessage] = useState<string | null>(null);
   const recommendationTopScrollRef = useRef<HTMLDivElement>(null);
   const recommendationTableScrollRef = useRef<HTMLDivElement>(null);
 
@@ -1278,41 +1280,19 @@ export function CandidateProfileWorkspace() {
     void fetch("/api/likes", { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) throw new Error("LIKE_LOAD_FAILED");
-        return (await response.json()) as { count: number; liked: boolean };
+        return (await response.json()) as { count: number };
       })
       .then((summary) => {
-        dispatchLike({ type: "loaded", count: summary.count, liked: summary.liked });
+        if (typeof summary.count !== "number") throw new Error("LIKE_LOAD_FAILED");
+        setLikeCount(summary.count);
+        setLikeStatus("ready");
+        setLikeMessage(null);
       })
-      .catch(() => dispatchLike({ type: "failed", message: "点赞数据暂不可用" }));
+      .catch(() => {
+        setLikeStatus("failed");
+        setLikeMessage("点赞数据暂不可用");
+      });
   }, []);
-
-  async function handleLike() {
-    if (likeState.liked || likeState.status === "pending") return;
-    dispatchLike({ type: "submit" });
-
-    try {
-      const response = await fetch("/api/likes", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { Origin: window.location.origin },
-      });
-      const data = (await response.json()) as { count?: number; liked?: boolean; error?: string };
-
-      if (!response.ok || typeof data.count !== "number" || data.liked !== true) {
-        throw new Error(data.error ?? "LIKE_FAILED");
-      }
-
-      dispatchLike({ type: "liked", count: data.count });
-    } catch (likeError) {
-      dispatchLike({
-        type: "failed",
-        message:
-          likeError instanceof Error && likeError.message === "LIKE_RATE_LIMITED"
-            ? "操作频繁，请稍后再试"
-            : "点赞失败，请稍后重试",
-      });
-    }
-  }
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -1665,22 +1645,16 @@ export function CandidateProfileWorkspace() {
               <p className="mt-2 text-sm leading-6 text-muted">安徽普通类本科批 · 院校专业组方案</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <button
-                aria-label={likeState.liked ? "已点赞" : "点赞"}
-                aria-pressed={likeState.liked}
-                className={`inline-flex h-8 items-center gap-1.5 rounded border px-2.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${
-                  likeState.liked
-                    ? "border-danger bg-danger-soft text-danger"
-                    : "border-line bg-background text-muted hover:border-danger hover:text-danger"
+              <div
+                aria-label={`点赞数 ${likeCount}`}
+                className={`inline-flex h-8 items-center gap-1.5 rounded border border-line bg-background px-2.5 text-xs font-semibold text-muted ${
+                  likeStatus === "loading" ? "opacity-70" : ""
                 }`}
-                disabled={likeState.liked || likeState.status === "pending"}
-                title={likeState.liked ? "已点赞" : "点赞支持公益项目"}
-                type="button"
-                onClick={() => void handleLike()}
+                title="当前点赞数"
               >
-                <Heart aria-hidden className="h-3.5 w-3.5" fill={likeState.liked ? "currentColor" : "none"} />
-                <span>{likeState.count}</span>
-              </button>
+                <Heart aria-hidden className="h-3.5 w-3.5" />
+                <span>{likeCount}</span>
+              </div>
               <Link
                 className="inline-flex h-8 items-center gap-1.5 rounded border border-line bg-background px-2.5 text-xs font-semibold text-muted transition hover:border-accent hover:text-accent"
                 href="/guide"
@@ -1692,7 +1666,7 @@ export function CandidateProfileWorkspace() {
               <ShieldCheck aria-hidden className="h-6 w-6 text-accent" />
             </div>
           </div>
-          {likeState.message ? <p className="mt-2 text-right text-xs text-muted">{likeState.message}</p> : null}
+          {likeMessage ? <p className="mt-2 text-right text-xs text-muted">{likeMessage}</p> : null}
 
           <form className="mt-6 grid gap-5" onSubmit={handleSubmit}>
             <label className="grid gap-2 text-sm font-medium">
